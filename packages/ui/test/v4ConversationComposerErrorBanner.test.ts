@@ -5,6 +5,7 @@ import type { ConversationSnapshot } from "@zcode/shared/zcode-protocol-v4";
 import { ConversationComposer } from "@/v4/ConversationComposer.js";
 import { ZCodeIntlProvider } from "@/i18n/IntlProvider.js";
 import { RemoteConversationAvailability } from "@/v4/RemoteConversationAvailability.js";
+import { TID_V4_COMPOSER_SEND, TID_V4_STOP } from "@zcode/shared/test-ids";
 
 const captured = vi.hoisted(() => ({
   chatErrorBannerProps: null as Record<string, unknown> | null,
@@ -39,9 +40,11 @@ vi.mock("@/ControlHintTooltip.js", async () => {
   };
 });
 
-vi.mock("@/prompt-editor/ChatPromptEditor.js", async () => {
+vi.mock("@/prompt-editor/ChatPromptEditor.js", async (importOriginal) => {
   const React = await import("react");
+  const actual = await importOriginal<typeof import("@/prompt-editor/ChatPromptEditor.js")>();
   return {
+    ...actual,
     ChatPromptEditor: (
       props: {
         inputLeadingContent?: ReactNode;
@@ -358,6 +361,32 @@ describe("ConversationComposer error banner", () => {
 
     expect(captured.chatPromptEditorProps?.disabled).toBe(false);
     expect(captured.chatPromptEditorProps?.submitDisabled).toBe(false);
+  });
+
+  it("renders the shared submit action disabled for an empty idle draft and a non-submit stop action while running", () => {
+    const idle = renderComposerWithSnapshot();
+    const send = idle.match(
+      new RegExp(`<button[^>]*data-testid="${TID_V4_COMPOSER_SEND}"[^>]*>`),
+    )?.[0];
+    expect(send).toContain('type="submit"');
+    expect(send).toContain('disabled=""');
+    expect(send).toContain("aria-label=");
+    expect(idle).not.toContain(`data-testid="${TID_V4_STOP}"`);
+
+    const snapshot = makeSnapshot();
+    snapshot.control = {
+      ...snapshot.control,
+      phase: "running",
+      sessionEnded: false,
+      canStop: true,
+    };
+    snapshot.inputRouting = { mode: "guide" };
+    const running = renderComposerWithSnapshot(snapshot);
+    const stop = running.match(new RegExp(`<button[^>]*data-testid="${TID_V4_STOP}"[^>]*>`))?.[0];
+    expect(stop).toContain('type="button"');
+    expect(stop).not.toContain('disabled=""');
+    expect(stop).toContain("aria-label=");
+    expect(running).not.toContain(`data-testid="${TID_V4_COMPOSER_SEND}"`);
   });
 
   it("keeps modified submit available when idle and reverses delivery only while running", () => {

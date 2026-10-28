@@ -1,16 +1,13 @@
 import { MessageCircleReply } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
-import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
+import { NotificationProse, NotificationToolRow } from "@/ToolCallBlocks/ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
 
 const RESOLVE_QUESTION_TOOL_ICON = (
   <MessageCircleReply className="size-4 shrink-0 text-foreground-subtle" />
 );
-
-/** 折叠头部的单行概要上限：概要只是「大概答了什么」，整段答案在展开后的 body 里。 */
-const INLINE_PREVIEW_MAX_LENGTH = 160;
 
 /** 读时把 input 归一成对象：字符串先试**一次**宽容 `JSON.parse`（照 submit-result 的读侧惯例）。 */
 function toRecord(value: unknown): Record<string, unknown> | undefined {
@@ -32,16 +29,6 @@ function toRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-/** 折叠头部的单行概要：换行折叠成空格，超长截断。 */
-function toInlinePreview(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const collapsed = value.replace(/\s+/gu, " ").trim();
-  if (collapsed.length === 0) return undefined;
-  return collapsed.length > INLINE_PREVIEW_MAX_LENGTH
-    ? `${collapsed.slice(0, INLINE_PREVIEW_MAX_LENGTH)}…`
-    : collapsed;
 }
 
 /**
@@ -89,14 +76,6 @@ export function ResolveWorkflowQuestionToolCallBlock(context: ToolCallBlockRende
       ? undefined
       : readText(toolCall.output);
 
-  const inlinePreview = useMemo(() => toInlinePreview(answer), [answer]);
-  const primaryText = useMemo(
-    () => (
-      <span className="min-w-0 truncate">{inlinePreview ?? toolCall.title ?? fallbackName}</span>
-    ),
-    [inlinePreview, toolCall.title, fallbackName],
-  );
-
   const hasDetails = questionId !== undefined || answer !== undefined || outcomeText !== undefined;
 
   const renderContent = useCallback(
@@ -114,9 +93,7 @@ export function ResolveWorkflowQuestionToolCallBlock(context: ToolCallBlockRende
         {answer !== undefined ? (
           <section className="space-y-1.5">
             <h4 className="text-ui-sm font-medium text-foreground-subtlest">{answerHeading}</h4>
-            <p className="whitespace-pre-wrap break-words rounded-lg border border-border bg-panel px-4 py-3 text-ui-base leading-5 text-foreground">
-              {answer}
-            </p>
+            <NotificationProse>{answer}</NotificationProse>
           </section>
         ) : null}
         {outcomeText !== undefined ? (
@@ -140,16 +117,16 @@ export function ResolveWorkflowQuestionToolCallBlock(context: ToolCallBlockRende
 
   return (
     <>
-      <ToolLayout
+      <NotificationToolRow
         toolId={toolCall.toolId}
         icon={RESOLVE_QUESTION_TOOL_ICON}
         showIcon={context.showIcon !== false}
         canToggle={hasDetails && (context.canToggle ?? true)}
         forceOpen={hasDetails && (context.forceOpen ?? false)}
-        hideSecondaryTextWhenOpen
         kindLabel={kindLabel}
         sourceLabel={context.sourceLabel}
-        primaryText={primaryText}
+        summary={answer}
+        fallbackSummary={toolCall.title ?? fallbackName}
         statusLabel={
           isFailed ? intl.formatMessage({ id: "chat.toolCall.status.failed" }) : undefined
         }

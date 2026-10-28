@@ -43,7 +43,14 @@ export function ConversationAgentToolCallRow({
   item: Extract<ConversationAssistantWorkRenderItem, { kind: "agentToolCall" }>;
   context: ConversationRowRenderContext;
 }) {
-  const toolCallNode = useMemo(() => toolCallRowToLegacyNode(item.row), [item.row]);
+  const toolCallNode = useMemo(() => {
+    const node = toolCallRowToLegacyNode(item.row);
+    // 昵称来自已配对的 Registry 身份；role 仍独立用于真实子会话入口和权限。
+    if (item.subagentRow.nickname) node.toolCall.raw = {
+      ...(node.toolCall.raw as Record<string, unknown>), nickname: item.subagentRow.nickname,
+    };
+    return node;
+  }, [item.row, item.subagentRow.nickname]);
   const childSessionId = item.subagentRow.childSessionId;
   const subagentType = item.subagentRow.subagentType;
   // 与 Agent 摘要行复用同一 title resolver，保证右侧 tab 和用户点击的可见标题逐字一致。

@@ -71,7 +71,8 @@ const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task", "subagent"]);
 const isToolCallRow = (row: AssistantWorkRow): row is ToolCallRow => row.kind === "toolCall";
 
 const isAgentToolCallRow = (row: AssistantWorkRow): row is ToolCallRow =>
-  isToolCallRow(row) && SUBAGENT_TOOL_NAMES.has(row.toolName);
+  isToolCallRow(row) && (SUBAGENT_TOOL_NAMES.has(row.toolName) ||
+    resolveToolCallIdentity(toolCallRowToLegacyNode(row).toolCall).family === "agent");
 
 function isExploreToolCallRow(row: AssistantWorkRow): row is ToolCallRow {
   if (!isToolCallRow(row)) {

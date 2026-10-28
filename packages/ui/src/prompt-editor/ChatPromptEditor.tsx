@@ -1,6 +1,7 @@
 /* oxlint-disable eslint(max-lines) -- 输入壳同时收口 Lexical 同步、拖拽和工具栏插槽，暂不拆组件。 */
 // 输入展示壳：纯 props 组件、无 store/协议依赖；mention 面板通过 enableMentionPanel 透传。
 import type {
+  ComponentProps,
   KeyboardEventHandler,
   DragEventHandler,
   FormEventHandler,
@@ -9,7 +10,7 @@ import type {
 } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TID_CHAT_SEND_BUTTON } from "@zcode/shared/test-ids";
-import { ArrowUpIcon, Hand, XIcon } from "lucide-react";
+import { ArrowUpIcon, Hand, SquareIcon, XIcon } from "lucide-react";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { Button } from "@/components/ui/button.js";
 import { Spinner } from "@/components/ui/spinner.js";
@@ -29,6 +30,56 @@ import { appendWorkspaceFileMentionToComposer } from "@/lib/workspaceFileCompose
 import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
 import { ChatPromptActionMenu } from "@/prompt-editor/ChatPromptActionMenu.js";
 import { useComposerToolbarFit } from "@/prompt-editor/useComposerToolbarFit.js";
+
+// Main 与子代理控制区共用输入外壳，避免两处圆角、边框和焦点样式再次分叉。
+export function ChatPromptEditorShell({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      {...props}
+      className={cn(
+        "relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-input-border bg-input p-3 transition-colors hover:border-input-border-hover focus-within:!border-input-border-focused focus-within:bg-input-focused",
+        className,
+      )}
+    />
+  );
+}
+
+// 仅统一动作位的展示；草稿、可发送状态与命令准入仍由各 composer 的原 Owner 裁决。
+export function ChatPromptSubmitButton({
+  action = "send",
+  pending = false,
+  label,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "children" | "type" | "variant" | "size" | "aria-label"> & {
+  action?: "send" | "stop";
+  pending?: boolean;
+  label: string;
+}) {
+  const stop = action === "stop";
+  return (
+    <Button
+      {...props}
+      type={stop ? "button" : "submit"}
+      variant={stop ? "secondary" : "default"}
+      size="icon-md"
+      aria-label={label}
+      className={cn(
+        !stop && "gap-1 rounded-lg bg-brand text-ui-base text-foreground-inverse hover:bg-brand/80",
+        className,
+      )}
+    >
+      {pending ? (
+        <Spinner className="size-4" />
+      ) : stop ? (
+        <SquareIcon className="size-4 fill-current" />
+      ) : (
+        <ArrowUpIcon className="size-4" />
+      )}
+      <span className="sr-only">{label}</span>
+    </Button>
+  );
+}
 
 function runAfterFrame(callback: () => void) {
   if (typeof requestAnimationFrame === "function") {
@@ -401,13 +452,12 @@ export function ChatPromptEditor({
           className="absolute inset-x-0 bottom-full z-20"
         />
       )}
-      <div
+      <ChatPromptEditorShell
         data-composer-layout={layout}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-input-border bg-input p-3 transition-colors hover:border-input-border-hover focus-within:!border-input-border-focused focus-within:bg-input-focused",
           isInline && "flex-row flex-wrap items-end gap-2 p-2",
           (isWorkspaceFileDropActive || isExternalFileDropActive) &&
             "border-brand bg-input-focused ring-1 ring-brand/30",
@@ -474,22 +524,17 @@ export function ChatPromptEditor({
             {betweenCancelAndSubmitAction}
             {submitControl ?? (
               <ControlHintTooltip title={submitLabel} shortcut={enterSubmits ? "Enter" : undefined}>
-                <Button
-                  type="submit"
-                  size="icon-md"
+                <ChatPromptSubmitButton
                   disabled={submitDisabled}
                   data-testid={submitTestId ?? TID_CHAT_SEND_BUTTON}
-                  aria-label={submitLabel}
-                  className="gap-1 rounded-lg bg-brand text-ui-base text-foreground-inverse hover:bg-brand/80"
-                >
-                  {submitting ? <Spinner className="size-4" /> : <ArrowUpIcon className="size-4" />}
-                  <span className="sr-only">{submitLabel}</span>
-                </Button>
+                  label={submitLabel}
+                  pending={submitting}
+                />
               </ControlHintTooltip>
             )}
           </div>
         </div>
-      </div>
+      </ChatPromptEditorShell>
     </form>
   );
 }

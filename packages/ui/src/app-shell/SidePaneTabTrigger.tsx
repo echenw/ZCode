@@ -5,7 +5,6 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   FolderOpenIcon,
   PuzzleIcon,
-  BotIcon,
   BotMessageSquareIcon,
   BugIcon,
   FileIcon,
@@ -26,6 +25,8 @@ import {
   XIcon,
 } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
+import { subagentNameTextColor } from "@/lib/subagentColors.js";
+import { SubagentAvatar } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -249,7 +250,13 @@ function SidePaneTabItemContent({
       <span className="flex size-4 shrink-0 items-center justify-center">
         <SidePaneTabIcon tab={tab} />
       </span>
-      <span data-side-pane-tab-title="" className="shrink-0 whitespace-nowrap">
+      <span
+        data-side-pane-tab-title=""
+        className={cn(
+          "shrink-0 whitespace-nowrap",
+          tab.type === "subagent-session" && subagentNameTextColor(title),
+        )}
+      >
         {title}
       </span>
       {isDiffPreviewTab(tab) ? (
@@ -306,7 +313,7 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
     return <MessageSquareTextIcon className="size-3.5" />;
   }
   if (tab.type === "subagent-session") {
-    return <BotIcon className="size-3.5" />;
+    return <SubagentAvatar name={tab.title} className="size-3.5" />;
   }
 
   if (tab.type === "subagent-directory") {

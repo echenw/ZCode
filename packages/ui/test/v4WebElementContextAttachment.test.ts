@@ -25,9 +25,11 @@ vi.mock("@/ControlHintTooltip.js", async () => {
   };
 });
 
-vi.mock("@/prompt-editor/ChatPromptEditor.js", async () => {
+vi.mock("@/prompt-editor/ChatPromptEditor.js", async (importOriginal) => {
   const React = await import("react");
+  const actual = await importOriginal<typeof import("@/prompt-editor/ChatPromptEditor.js")>();
   return {
+    ...actual,
     ChatPromptEditor: (props: Record<string, unknown>) => {
       chatPromptEditorProps.push(props);
       const inputApiRef = props.inputApiRef as

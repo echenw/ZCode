@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FACE_COLORS,
   WorkflowAgentFace,
+  SubagentAvatar,
   agentColor,
   avatarColor,
 } from "@/components/workflow-timeline/WorkflowAgentFace.js";
@@ -27,6 +28,64 @@ function clock() {
   vi.spyOn(Math, "random").mockReturnValue(0.2);
 }
 describe("WorkflowAgentFace", () => {
+  it("普通子代理复用方脸和名称色；原工作流仍按编号选色", () => {
+    const workflow = renderFace();
+    expect(face(workflow).style.getPropertyValue("--wf-face-body")).toBe(FACE_COLORS[0]);
+    workflow.unmount();
+    for (const [name, color] of [
+      ["Ada", "violet"],
+      ["Turing", "rose"],
+      ["Curie", "cyan"],
+    ]) {
+      const view = render(createElement(SubagentAvatar, { name: `${name} · Assignment` }));
+      const node = view.container.querySelector<SVGSVGElement>("[data-subagent-avatar]")!;
+      expect(node.getAttribute("aria-hidden")).toBe("true");
+      expect(node.style.getPropertyValue("--wf-face-body")).toBe("currentColor");
+      expect(node.classList.contains(`text-${color}-700`)).toBe(true);
+      expect(node.classList.contains(`dark:text-${color}-300`)).toBe(true);
+      expect(node.querySelector(".wf-face-body")?.getAttribute("rx")).toBe("7");
+      expect(node.dataset.faceState).toBe("idle");
+      expect(node.dataset.expression).toBe("pill");
+      view.unmount();
+    }
+  });
+
+  it("普通代理按真实状态切换表情，颜色保持同一身份", () => {
+    const view = render(createElement(SubagentAvatar, { name: "Ada" }));
+    for (const [status, expression] of [
+      ["running", "pill"],
+      ["success", "happy"],
+      ["failed", "sad"],
+      ["waiting", "dots"],
+      ["blocked", "dots"],
+      ["cancelled", "pill"],
+      ["lost", "pill"],
+    ] as const) {
+      view.rerender(createElement(SubagentAvatar, { name: "Ada", status }));
+      const node = view.container.querySelector<SVGSVGElement>("svg")!;
+      expect(node.dataset.expression).toBe(expression);
+      expect(node.classList.contains("text-violet-700")).toBe(true);
+    }
+  });
+
+  it("状态未知的头像始终保留双眼，并复用眨眼和侧看动作", () => {
+    clock();
+    const view = render(createElement(SubagentAvatar, { name: "Ada" }));
+    const node = view.container.querySelector<SVGSVGElement>("svg")!;
+    const motions = new Set<string>();
+    for (let index = 0; index < 600; index++) {
+      advance(100);
+      expect(node.dataset.expression).toBe("pill");
+      expect(node.dataset.faceState).toBe("idle");
+      motions.add(node.dataset.motion!);
+    }
+    expect(motions.has("blink")).toBe(true);
+    expect(motions.has("glance")).toBe(true);
+    expect(motions.has("dots-wave")).toBe(false);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("九个编号取九色环、互不相同，第十个循环；无编号退回名字散列", () => {
     const hues = Array.from({ length: 9 }, (_, i) => agentColor(i, "x"));
     expect(new Set(hues).size).toBe(9);

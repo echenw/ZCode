@@ -44,3 +44,9 @@ export function resolveSubagentColorFromName(name: string): AgentColor {
   }
   return SUBAGENT_COLORS[hash % SUBAGENT_COLORS.length] ?? "blue";
 }
+
+/** 目录/详情标题为「昵称 · 任务」；任务变化不能让同一代理的身份色变化。 */
+export function subagentNameTextColor(displayName: string): string {
+  const name = displayName.split(" · ", 1)[0]!.trim();
+  return SUBAGENT_TEXT_COLOR_CLASS[resolveSubagentColorFromName(name)];
+}

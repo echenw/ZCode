@@ -16,6 +16,7 @@ export type ToolCallPresentationFamily =
   | "unknown";
 
 export type ToolCallIdentitySource =
+  | "registered-multi-agent"
   | "toolName"
   | "kind"
   | "title"
@@ -217,6 +218,11 @@ function isPlanModeExitToken(value: string): boolean {
 }
 
 export function resolveToolCallIdentity(toolCall: ToolIdentityLike): ToolCallIdentity {
+  // Canonical operation is supplied by the Host from the registered built-in entry.
+  // Arbitrary MCP names ending in _spawn_agent/_send_message remain generic.
+  const operation = readNestedString(toolCall.raw, ["multiAgentOperation"]);
+  if (operation === "spawn_agent") return { toolName: "Agent", family: "agent", source: "registered-multi-agent", isLegacy: false };
+  if (operation === "send_message" || operation === "followup_task") return { toolName: "SendMessage", family: "message", source: "registered-multi-agent", isLegacy: false };
   const rawNames = readRawToolNameCandidates(toolCall.raw);
   const normalizedKind = normalizeLegacyToken(toolCall.kind);
   const normalizedTitle = normalizeLegacyToken(toolCall.title);

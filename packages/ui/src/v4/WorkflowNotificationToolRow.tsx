@@ -1,15 +1,18 @@
-import { Hourglass, MessageCircleQuestion, Workflow } from "lucide-react";
+import { Hourglass, MessageCircleQuestion, MessageCircleReply, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   BackgroundResultOriginMeta,
   WorkflowBlockedMeta,
   WorkflowNotificationMeta,
   WorkflowRunHole,
+  UserInputRow,
 } from "@zcode/shared/zcode-protocol-v4";
 import { CodeBlock, CodeBlockHeader } from "@/components/ai-elements/code-block.js";
 import { WorkflowNotificationHoleRow } from "@/v4/WorkflowNotificationHoleRow.js";
-import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
+import { NotificationProse, NotificationToolRow } from "@/ToolCallBlocks/ToolLayout.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { subagentNameTextColor } from "@/lib/subagentColors.js";
+import { SubagentAvatar } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 import type { Theme } from "@/useTheme.js";
 import { workflowRunQuestionWaitedLabel } from "@/app-shell/workflowRunQuestions.js";
 import { WorkflowNotificationArtifactChips } from "@/v4/WorkflowNotificationArtifactChips.js";
@@ -28,13 +31,11 @@ import { WorkflowNotificationArtifactChips } from "@/v4/WorkflowNotificationArti
 /** 通知行根节点的 testid 基名。 */
 const TID_CHAT_WORKFLOW_NOTIFICATION_ROW = "chat-workflow-notification-row";
 
-/** 折叠头部单行概要上限，照 escalate 卡：概要只是「大概问了什么」，全文在展开体里。 */
-const INLINE_PREVIEW_MAX_LENGTH = 160;
-
 const TERMINAL_ICON = <Workflow className="size-4 shrink-0 text-foreground-subtle" />;
 const ESCALATION_ICON = (
   <MessageCircleQuestion className="size-4 shrink-0 text-foreground-subtle" />
 );
+const MESSAGE_ICON = <MessageCircleReply className="size-4 shrink-0 text-foreground-subtle" />;
 
 /** 面板正文（问题 / 结果 prose）：照 escalate / submit-result 的 border-border bg-panel 惯例。 */
 const PANEL_CLASS =
@@ -42,15 +43,6 @@ const PANEL_CLASS =
 /** 失败 error 面板：照 resolve-question outcome 的 border-destructive/40 惯例（不是行级失败装置）。 */
 const ERROR_PANEL_CLASS =
   "whitespace-pre-wrap break-words rounded-lg border border-destructive/40 bg-panel px-4 py-3 text-ui-base leading-5 text-foreground";
-
-/** 折叠成单行概要：换行折成空格，超长截断（照 escalate 卡 toInlinePreview）。 */
-function toInlinePreview(value: string): string | undefined {
-  const collapsed = value.replace(/\s+/gu, " ").trim();
-  if (collapsed.length === 0) return undefined;
-  return collapsed.length > INLINE_PREVIEW_MAX_LENGTH
-    ? `${collapsed.slice(0, INLINE_PREVIEW_MAX_LENGTH)}…`
-    : collapsed;
-}
 
 const TERMINAL_KIND_LABEL_ID: Record<"completed" | "errored" | "stopped", string> = {
   completed: "chat.backgroundResult.workflow.completed",
@@ -103,6 +95,10 @@ export type WorkflowRowNotification =
   | WorkflowNotificationMeta
   | ({ kind: "blocked" } & WorkflowBlockedMeta);
 
+// 仅适配原代理邮件的显示字段；不是 Workflow wire 成员，不产生 run/qid 或回答状态。
+type AgentMailNotification = { kind: "agentMail" } & NonNullable<UserInputRow["agentMessage"]>;
+type DisplayNotification = WorkflowRowNotification | AgentMailNotification;
+
 /** 后台结果轮的 originMeta → 这一行要画的通知；两个载荷都缺席（批量轮、旧 transcript）即裸标题行。 */
 export function workflowRowNotification(
   originMeta: BackgroundResultOriginMeta | undefined,
@@ -115,7 +111,7 @@ export function workflowRowNotification(
 }
 
 export interface WorkflowNotificationToolRowProps {
-  notification: WorkflowRowNotification;
+  notification: DisplayNotification;
   /** run 名 = originMeta.title（CLI 权威给出，不本地化）。 */
   runName: string;
   /** testid 后缀 + ToolLayout persist key，取 unit.key。 */
@@ -168,30 +164,34 @@ function WorkflowNotificationBaseRow({
   pendingQids,
   forceOpen = false,
 }: WorkflowNotificationToolRowProps & {
-  notification: Exclude<WorkflowRowNotification, { kind: "hole" }>;
+  notification: Exclude<DisplayNotification, { kind: "hole" }>;
 }) {
   const { intl } = useZCodeIntl();
 
   // 等待时长要在没有事件流时也照走（停驻的 run 恰恰不发事件），按固定间隔喂新的"现在"。
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    // 普通邮件只复用通知呈现，不启动工作流的等待计时。
+    if (notification.kind === "agentMail") return;
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [notification.kind]);
 
-  const openRunLink = onOpenRun ? (
-    <button
-      type="button"
-      onClick={onOpenRun}
-      className="text-ui-sm text-foreground-subtle decoration-dotted underline-offset-2 hover:text-foreground hover:underline"
-    >
-      {intl.formatMessage({ id: "chat.toolCall.workflow.openRunDetails" })}
-    </button>
-  ) : null;
+  const openRunLink =
+    onOpenRun && notification.kind !== "agentMail" ? (
+      <button
+        type="button"
+        onClick={onOpenRun}
+        className="text-ui-sm text-foreground-subtle decoration-dotted underline-offset-2 hover:text-foreground hover:underline"
+      >
+        {intl.formatMessage({ id: "chat.toolCall.workflow.openRunDetails" })}
+      </button>
+    ) : null;
 
   const isEscalation = notification.kind === "escalation";
   const isStall = notification.kind === "stall";
   const isBlocked = notification.kind === "blocked";
+  const isMail = notification.kind === "agentMail";
 
   // kindLabel + primaryText + 展开体，按三类通知分别铸造。
   const escalationView = isEscalation ? escalationState(pendingQids, notification.qid) : undefined;
@@ -201,18 +201,25 @@ function WorkflowNotificationBaseRow({
     notification.kind === "terminal" && notification.status === "stopped"
       ? notification.stopReason
       : undefined;
-  const kindLabel = isEscalation
-    ? intl.formatMessage({ id: `chat.backgroundResult.workflow.${escalationView!}` })
-    : isStall
-      ? intl.formatMessage({ id: STALL_KIND_LABEL_ID })
-      : notification.kind === "blocked"
-        ? intl.formatMessage({ id: BLOCKED_KIND_LABEL_ID })
-        : stopReason !== undefined
-          ? `${intl.formatMessage({ id: TERMINAL_KIND_LABEL_ID[notification.status] })} · ${intl.formatMessage({ id: `chat.toolCall.workflow.run.stopReason.${stopReason}` })}`
-          : intl.formatMessage({ id: TERMINAL_KIND_LABEL_ID[notification.status] });
+  const kindLabel = isMail
+    ? intl.formatMessage({
+        id:
+          notification.messageType === "FINAL_ANSWER"
+            ? "chat.toolCall.kind.taskOutput"
+            : "chat.toolCall.kind.message",
+      })
+    : isEscalation
+      ? intl.formatMessage({ id: `chat.backgroundResult.workflow.${escalationView!}` })
+      : isStall
+        ? intl.formatMessage({ id: STALL_KIND_LABEL_ID })
+        : notification.kind === "blocked"
+          ? intl.formatMessage({ id: BLOCKED_KIND_LABEL_ID })
+          : stopReason !== undefined
+            ? `${intl.formatMessage({ id: TERMINAL_KIND_LABEL_ID[notification.status] })} · ${intl.formatMessage({ id: `chat.toolCall.workflow.run.stopReason.${stopReason}` })}`
+            : intl.formatMessage({ id: TERMINAL_KIND_LABEL_ID[notification.status] });
 
   const primaryText = useMemo(() => {
-    if (notification.kind !== "escalation") {
+    if (notification.kind !== "escalation" && notification.kind !== "agentMail") {
       return (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span aria-hidden>·</span>
@@ -220,8 +227,7 @@ function WorkflowNotificationBaseRow({
         </span>
       );
     }
-    const preview = toInlinePreview(notification.question);
-    return <span className="min-w-0 truncate">{preview ?? runName}</span>;
+    return undefined;
   }, [notification, runName]);
 
   // 折叠头部尾部的产物 chips。
@@ -260,16 +266,32 @@ function WorkflowNotificationBaseRow({
       : undefined;
 
   const renderContent = useCallback(() => {
-    if (notification.kind === "escalation") {
+    if (notification.kind === "escalation" || notification.kind === "agentMail") {
       const contextHeading = intl.formatMessage({ id: "chat.toolCall.workflow.escalate.context" });
+      const body = notification.kind === "agentMail" ? notification.body : notification.question;
+      const context =
+        notification.kind === "agentMail"
+          ? [
+              notification.senderPath === runName
+                ? runName
+                : `${runName} · ${notification.senderPath}`,
+              notification.targetName && notification.targetName !== notification.targetPath
+                ? `${notification.targetName} · ${notification.targetPath}`
+                : notification.targetPath === "/root"
+                  ? "Main · /root"
+                  : notification.targetPath,
+            ].join("\n")
+          : notification.context;
       return (
         <div className="space-y-3">
           {/* 问题全文（不引用答案原文——答案在相邻 ResolveWorkflowQuestion 卡里）。 */}
-          <p className={`${PANEL_CLASS} text-foreground`}>{notification.question}</p>
-          {notification.context !== undefined ? (
+          <NotificationProse testId="notification-message-body">{body}</NotificationProse>
+          {context !== undefined ? (
             <section className="space-y-1.5">
               <h4 className="text-ui-sm font-medium text-foreground-subtlest">{contextHeading}</h4>
-              <p className={`${PANEL_CLASS} text-foreground-subtle`}>{notification.context}</p>
+              <NotificationProse muted testId="notification-context">
+                {context}
+              </NotificationProse>
             </section>
           ) : null}
           {waited ? <p className="text-ui-sm text-foreground-subtle">{waited}</p> : null}
@@ -385,21 +407,46 @@ function WorkflowNotificationBaseRow({
         {openRunLink}
       </div>
     );
-  }, [notification, theme, waited, openRunLink, intl]);
+  }, [notification, runName, theme, waited, openRunLink, intl]);
 
   const toolId = `${TID_CHAT_WORKFLOW_NOTIFICATION_ROW}-${testIdKey}`;
 
   return (
-    <div data-testid={toolId}>
-      <ToolLayout
+    <div data-testid={toolId} data-notification-source={isMail ? "agent" : "workflow"}>
+      <NotificationToolRow
         toolId={toolId}
         persistOpenKey={toolId}
-        icon={isEscalation ? ESCALATION_ICON : isStall || isBlocked ? STALL_ICON : TERMINAL_ICON}
+        icon={
+          isMail && notification.messageType !== "FINAL_ANSWER"
+            ? MESSAGE_ICON
+            : isEscalation
+              ? ESCALATION_ICON
+              : isStall || isBlocked
+                ? STALL_ICON
+                : TERMINAL_ICON
+        }
         // 图标已由 kind 区分；showIcon 缺省即显示。
         canToggle={hasDetails}
         forceOpen={forceOpen && hasDetails}
-        hideSecondaryTextWhenOpen
         kindLabel={kindLabel}
+        summary={isMail ? notification.body : isEscalation ? notification.question : undefined}
+        sourceLabel={
+          isMail ? (
+            <span
+              className={
+                notification.senderPath !== "/root"
+                  ? `inline-flex items-center gap-1 ${subagentNameTextColor(runName)}`
+                  : undefined
+              }
+            >
+              {notification.senderPath !== "/root" ? (
+                <SubagentAvatar name={runName} className="size-3" />
+              ) : null}
+              {runName}
+            </span>
+          ) : undefined
+        }
+        fallbackSummary={runName}
         primaryText={primaryText}
         secondaryText={artifactChips}
         // 关键：**不**走 ToolLayout 的 failure status 装置（那是「这次调用坏了」的语义）；

@@ -777,3 +777,12 @@ describe("buildAssistantWorkRenderItems", () => {
     expect(agentItem).not.toHaveProperty("showSubagentOutputPreview");
   });
 });
+
+
+it.each(["collaboration_spawn_agent", "custom_spawn_agent", "short_spawn_agent"])("pairs registered native %s with the original child anchor", (toolName) => {
+  const items = buildRenderItems([
+    toolCall(1, toolName, { task_name: "a", message: "Review" }, { multiAgentOperation: "spawn_agent" }),
+    subagent(2, { parentToolCallId: "tool-1", childSessionId: "original-child" }),
+  ]);
+  expect(items).toMatchObject([{ kind: "agentToolCall", row: { toolName }, subagentRow: { childSessionId: "original-child" } }]);
+});

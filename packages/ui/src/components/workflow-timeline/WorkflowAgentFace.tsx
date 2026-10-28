@@ -1,4 +1,10 @@
 import { useEffect, useRef, type CSSProperties } from "react";
+import type {
+  AgentColor,
+  ZCodeSessionEndedSubagent,
+  ZCodeSessionRunningSubagent,
+} from "@zcode/shared";
+import { subagentNameTextColor, SUBAGENT_TEXT_COLOR_CLASS } from "@/lib/subagentColors.js";
 import {
   BASE_EXPRESSION,
   faceState,
@@ -91,21 +97,27 @@ function Eyes() {
 
 export function WorkflowAgentFace({
   avatarIndex,
+  bodyColor,
   className,
+  neutralWhenUnknown = false,
   name,
   status,
 }: {
   avatarIndex: number | undefined;
+  /** 其它代理入口复用同一张脸时，可沿用其已有身份色；工作流默认仍按编号选色。 */
+  bodyColor?: string;
   className?: string;
+  /** 普通代理的身份标签没有实时状态；未知应显示中性眼睛，不能冒充工作流排队。 */
+  neutralWhenUnknown?: boolean;
   name: string;
   status: StepRunStatus | undefined;
 }) {
   const ref = useRef<SVGSVGElement>(null);
-  const state = faceState(status);
+  const state = status === undefined && neutralWhenUnknown ? "idle" : faceState(status);
   useEffect(() => {
     if (ref.current) return startFaceMotion(ref.current, state);
   }, [state]);
-  const style = { "--wf-face-body": agentColor(avatarIndex, name) } as CSSProperties;
+  const style = { "--wf-face-body": bodyColor ?? agentColor(avatarIndex, name) } as CSSProperties;
   return (
     <svg
       aria-hidden
@@ -121,5 +133,44 @@ export function WorkflowAgentFace({
       <rect className="wf-face-body" fill="var(--wf-face-body)" height={20} rx={7} width={20} />
       <Eyes />
     </svg>
+  );
+}
+
+/** 普通子代理使用名称的身份色；不从历史消息猜测当前运行状态。 */
+export function SubagentAvatar({
+  name,
+  color,
+  className,
+  status,
+}: {
+  name: string;
+  color?: AgentColor;
+  className?: string;
+  status?: ZCodeSessionRunningSubagent["status"] | ZCodeSessionEndedSubagent["status"];
+}) {
+  return (
+    <WorkflowAgentFace
+      avatarIndex={undefined}
+      bodyColor="currentColor"
+      className={cn(
+        // 原工作流头像的最小尺寸为 20px；紧凑名称标签必须能使用 12/14/16px 的原图标槽位。
+        "inline-block size-4 !min-h-0 !min-w-0 shrink-0 align-middle",
+        color ? SUBAGENT_TEXT_COLOR_CLASS[color] : subagentNameTextColor(name),
+        className,
+      )}
+      name={name}
+      neutralWhenUnknown
+      status={
+        status === "running"
+          ? "running"
+          : status === "success"
+            ? "done"
+            : status === "failed"
+              ? "failed"
+              : status === "waiting" || status === "blocked"
+                ? "pending"
+                : undefined
+      }
+    />
   );
 }

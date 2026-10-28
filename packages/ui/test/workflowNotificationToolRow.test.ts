@@ -44,6 +44,33 @@ function render(
 const EXPAND_TOGGLE_LABEL = "Expand tool details";
 const OPEN_RUN_LABEL = "Open run details";
 
+it("ordinary agent mail uses the original notification entry without workflow answer state or links", () => {
+  const html = render({
+    notification: {
+      kind: "agentMail",
+      messageType: "MESSAGE",
+      senderPath: "/root/a",
+      senderName: "Ada",
+      targetPath: "/root",
+      targetName: "Main",
+      body: "A real ordinary message, not a workflow question.",
+    },
+    runName: "Ada",
+    pendingQids: new Set(["real-workflow-question"]),
+    onOpenRun: () => {},
+    forceOpen: true,
+  });
+  expect(html).toContain('data-notification-source="agent"');
+  expect(html).toContain("Message");
+  expect(html).toContain("Ada · /root/a");
+  expect(html).toContain("Main · /root");
+  expect(html).not.toContain("Subagent question answered");
+  expect(html).not.toContain("Subagent is waiting for an answer");
+  expect(html).not.toContain(OPEN_RUN_LABEL);
+  expect(html).not.toContain("Completion report");
+  expect(html).not.toContain("Received message");
+});
+
 describe("WorkflowNotificationToolRow — terminal", () => {
   it("kindLabel 承载三个终态（工具卡语法，无失败装置）", () => {
     expect(

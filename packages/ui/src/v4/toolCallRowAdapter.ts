@@ -108,6 +108,7 @@ export function toolCallRowToLegacyNode(row: ToolCallRow): TaskChatToolCallTreeN
       // 不补回 legacy error 会让 ToolOutput 看不到失败原因，只剩一张空的 failed 摘要。
       error: errorText,
       raw: {
+        ...(row.multiAgentOperation ? { multiAgentOperation: row.multiAgentOperation } : {}),
         error: row.error,
         rawOutput: row.output?.text,
         outputPreview: row.outputPreview,

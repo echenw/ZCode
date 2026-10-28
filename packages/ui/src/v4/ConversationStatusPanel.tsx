@@ -57,6 +57,8 @@ import { Button } from "@/components/ui/button.js";
 import { RUN_STATUS_DOT } from "@/components/workflow-graph/run-status-presentation.js";
 import { WorkflowRunRail } from "@/components/workflow-run-line/WorkflowRunRail.js";
 import { foldWorkflowRunRail } from "@/lib/workflowRunLine.js";
+import { subagentNameTextColor } from "@/lib/subagentColors.js";
+import { SubagentAvatar } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 import { useNowTicker } from "@/components/workflow-graph/use-now-ticker.js";
 import {
   Collapsible,
@@ -962,10 +964,11 @@ export function buildRunningSubagentOpenRequest({
   rootSessionId?: string;
   subagent: ZCodeSessionRunningSubagent;
 }): OpenSubagentSideTabRequest | null {
-  if (!parentSessionId) return null;
+  const actualParentSessionId = subagent.parentSessionId ?? parentSessionId;
+  if (!actualParentSessionId) return null;
   return {
-    rootSessionId: rootSessionId ?? parentSessionId,
-    parentSessionId,
+    rootSessionId: subagent.rootSessionId ?? rootSessionId ?? actualParentSessionId,
+    parentSessionId: actualParentSessionId,
     childSessionId: subagent.childSessionId,
     subagentType: subagent.subagentType,
     title: subagent.title,
@@ -1458,7 +1461,10 @@ function SubagentStatusSection({
   const { intl } = useZCodeIntl();
   const [now, setNow] = useState(() => Date.now());
   const ordered = useMemo(
-    () => [...subagents].sort((left, right) => (left.startedAt ?? 0) - (right.startedAt ?? 0)),
+    () => [...subagents].sort((left, right) =>
+      left.agentPath && right.agentPath
+        ? left.agentPath.localeCompare(right.agentPath)
+        : (left.startedAt ?? 0) - (right.startedAt ?? 0)),
     [subagents],
   );
   useEffect(() => {
@@ -1518,7 +1524,10 @@ function SubagentStatusSection({
               data-background-task-kind="agent"
               data-child-session-id={subagent.childSessionId}
               data-work-id={subagent.controlWorkId}
-              data-work-status="running"
+              data-work-status={subagent.status}
+              data-agent-path={subagent.agentPath}
+              data-agent-depth={subagent.agentPath ? subagent.agentPath.split("/").length - 2 : undefined}
+              style={subagent.agentPath ? { paddingInlineStart: 8 + Math.min(4, Math.max(0, subagent.agentPath.split("/").length - 3)) * 12 } : undefined}
               className={cn(
                 "group relative flex min-w-0 items-start gap-2 rounded-lg px-2 py-2 hover:bg-[var(--color-hover)]",
                 canOpenSubagentSession && "cursor-pointer",
@@ -1538,12 +1547,21 @@ function SubagentStatusSection({
                   className="absolute inset-0 z-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-input-border-focused)]"
                 />
               ) : null}
-              <BotIcon className="pointer-events-none relative z-[1] mt-0.5 size-4 shrink-0 text-[var(--color-foreground-subtle)]" />
+              <SubagentAvatar name={subagent.title} status={subagent.status} className="pointer-events-none relative z-[1] mt-0.5 size-4" />
               <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 flex-col gap-1.5">
-                <span className="line-clamp-2 text-ui-base leading-5 text-[var(--color-foreground)]">
+                <span className={cn("line-clamp-2 text-ui-base leading-5", subagentNameTextColor(subagent.title))}>
                   {subagent.title}
                 </span>
+                {subagent.agentPath && !/\/legacy_[a-f\d]+/.test(subagent.agentPath) ? (
+                  <span className="break-all font-mono text-ui-sm text-[var(--color-foreground-subtle)]">{subagent.agentPath}</span>
+                ) : null}
                 <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-ui-base">
+                  <span className="text-ui-sm text-[var(--color-foreground-subtle)]">
+                    {intl.formatMessage({ id: `subagentDirectory.status.${subagent.status}` })}
+                  </span>
+                  {subagent.modelId ? <span className="font-mono text-ui-sm text-[var(--color-foreground-subtle)]">{subagent.providerId ? `${subagent.providerId}/` : ""}{subagent.modelId}</span> : null}
+                  {subagent.reasoningEffort ? <span className="text-ui-sm text-[var(--color-foreground-subtle)]">{subagent.reasoningEffort}</span> : null}
+                  {subagent.totalTokens !== undefined ? <span className="font-mono text-ui-sm tabular-nums text-[var(--color-foreground-subtle)]">{subagent.totalTokens.toLocaleString()} tokens</span> : null}
                   <span className="text-ui-base tabular-nums text-[var(--color-foreground-subtle)]">
                     {formatBackgroundTaskElapsedLabel(
                       Math.max(0, now - (subagent.startedAt ?? now)),
@@ -1856,6 +1874,7 @@ function StatusSummaryRow({
       <button
         type="button"
         aria-label={expandLabel}
+        data-status-panel-expand-trigger="true"
         className="group inline-flex w-max max-w-full cursor-pointer flex-col items-stretch text-left text-[var(--color-foreground)] transition-colors hover:bg-[var(--color-menu-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-input-border-focused)]"
         onClick={() => {
           // 展开后看到的不能比胶囊还少：胶囊显示着工作流，就连同「工作流」分区一起打开——

@@ -16,6 +16,7 @@ import {
 export interface LocalAgentMessageToolResultDisplay {
   kind: "local_agent_message";
   status: "success" | "failed";
+  recipientName?: string;
   error?: string;
   message?: string;
 }
@@ -91,8 +92,7 @@ const WORKFLOW_DISPLAY_PARSERS_BY_KIND: Record<
   (value: Record<string, unknown>) => ToolResultDisplay | undefined
 > = {
   get_workflow_run: (value) => parseWorkflowDisplay(toolCallGetWorkflowRunDisplaySchema, value),
-  list_workflow_runs: (value) =>
-    parseWorkflowDisplay(toolCallListWorkflowRunsDisplaySchema, value),
+  list_workflow_runs: (value) => parseWorkflowDisplay(toolCallListWorkflowRunsDisplaySchema, value),
   eval_workflow_snippet: (value) =>
     parseWorkflowDisplay(toolCallEvalWorkflowSnippetDisplaySchema, value),
   saved_workflow_list: (value) =>
@@ -128,10 +128,12 @@ function parseDisplay(value: unknown): ToolResultDisplay | undefined {
     if (value.status !== "success" && value.status !== "failed") return undefined;
     const error = readOptionalString(value, "error");
     const message = readOptionalString(value, "message");
-    if (error === null || message === null) return undefined;
+    const recipientName = readOptionalString(value, "recipientName");
+    if (error === null || message === null || recipientName === null) return undefined;
     return {
       kind: "local_agent_message",
       status: value.status,
+      ...(recipientName !== undefined ? { recipientName } : {}),
       ...(error !== undefined ? { error } : {}),
       ...(message !== undefined ? { message } : {}),
     };

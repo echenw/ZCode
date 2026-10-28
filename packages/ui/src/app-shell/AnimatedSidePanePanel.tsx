@@ -96,6 +96,7 @@ import {
   type BrowserUseSidePaneTab,
   type BrowserSidePaneMetadata,
   type OpenScopedSubagentSideTabRequest,
+  type OpenScopedSubagentDirectorySideTabRequest,
   type OpenScopedWorkflowActorSessionSideTabRequest,
   type OpenScopedWorkflowWorkspaceSideTabRequest,
   type OpenScopedWorkflowArtifactSideTabRequest,
@@ -109,6 +110,7 @@ import { getVisibleSidePaneTabs } from "@/lib/workspaceSidePane.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   BugIcon,
+  UsersRoundIcon,
   ChevronRightIcon,
   FileDiffIcon,
   FolderOpenIcon,
@@ -348,6 +350,7 @@ export function AnimatedSidePanePanel({
   onOpenCodeViewer,
   onOpenFileLink,
   onOpenSubagentSession,
+  onOpenSubagentDirectory,
   onOpenWorkflowActorSession,
   onOpenWorkflowWorkspace,
   onOpenWorkflowArtifact,
@@ -439,6 +442,7 @@ export function AnimatedSidePanePanel({
   onOpenFileLink?: (target: MessageFileLinkTarget) => void;
   onOpenBackgroundBash?: (request: OpenBackgroundBashSideTabRequest) => void;
   onOpenSubagentSession: (request: OpenScopedSubagentSideTabRequest) => void;
+  onOpenSubagentDirectory?: (request: OpenScopedSubagentDirectorySideTabRequest) => void;
   /** run 详情页里点 ask 节点 → 打开那个 actor 实例的 transcript tab。 */
   onOpenWorkflowActorSession?: (request: OpenScopedWorkflowActorSessionSideTabRequest) => void;
   /** run 详情页里点脚本行 → 打开该 run 的脚本 transcript tab，落到那一站。 */
@@ -779,6 +783,22 @@ export function AnimatedSidePanePanel({
     </Button>
   );
   const openTabLauncherItemById: Record<OpenTabLauncherItemId, OpenTabLauncherItem> = {
+    agents: {
+      id: "agents",
+      label: intl.formatMessage({ id: "subagentDirectory.title" }),
+      description: intl.formatMessage({ id: "sidePane.launcher.agents" }),
+      icon: UsersRoundIcon,
+      onOpen: () => {
+        if (!activeTaskId || !onOpenSubagentDirectory) return;
+        onOpenSubagentDirectory({
+          workspacePath: workspaceAbsPath,
+          workspaceIdentity,
+          remoteSessionId: workspaceRemoteSessionId ?? undefined,
+          parentSessionId: activeTaskId,
+          rootSessionId: activeTaskId,
+        });
+      },
+    },
     "selection-side-conversation": {
       id: "selection-side-conversation",
       label: intl.formatMessage({ id: "sidePane.selectionChat" }),
@@ -827,6 +847,7 @@ export function AnimatedSidePanePanel({
     developerToolsEnabled,
     hasReviewTab,
     supportsEmbeddedBrowser,
+    canOpenAgents: Boolean(activeTaskId && activeTaskId !== "draft" && onOpenSubagentDirectory),
   })
     .filter((itemId) => !isOfficeMode || (itemId !== "terminal" && itemId !== "review"))
     .map((itemId) => openTabLauncherItemById[itemId]);

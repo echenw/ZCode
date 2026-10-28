@@ -10,6 +10,9 @@ import {
   PauseCircleIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
+import { cn } from "@/components/lib/utils.js";
+import { subagentNameTextColor } from "@/lib/subagentColors.js";
+import { SubagentAvatar } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 import { useSessionSubagents } from "@/hooks/useSessionSubagents.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type {
@@ -29,6 +32,13 @@ type DirectoryItem = RunningSubagentSummary | ZCodeSessionEndedSubagent;
 
 const EMPTY_RUNNING: readonly RunningSubagentSummary[] = [];
 
+function orderByAgentPath<T extends DirectoryItem>(items: readonly T[]): T[] {
+  return [...items].sort((left, right) => {
+    if (left.agentPath && right.agentPath) return left.agentPath.localeCompare(right.agentPath);
+    return left.agentPath ? -1 : right.agentPath ? 1 : 0;
+  });
+}
+
 export function buildSubagentDirectoryOpenRequest(
   tab: SubagentDirectorySidePaneTab,
   item: DirectoryItem,
@@ -37,8 +47,9 @@ export function buildSubagentDirectoryOpenRequest(
     workspacePath: tab.workspacePath,
     ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
     ...(tab.remoteSessionId ? { remoteSessionId: tab.remoteSessionId } : {}),
-    rootSessionId: tab.rootSessionId,
-    parentSessionId: tab.parentSessionId,
+    // 根目录现在包含全部后代；孙代理的直接父级不能继续使用目录所属的 Root。
+    rootSessionId: item.rootSessionId ?? tab.rootSessionId,
+    parentSessionId: item.parentSessionId ?? tab.parentSessionId,
     childSessionId: item.childSessionId,
     subagentType: item.subagentType,
     title: item.title,
@@ -73,10 +84,18 @@ const DirectoryRow = memo(function DirectoryRow({
 }) {
   const { intl } = useZCodeIntl();
   const timestamp = "endedAt" in item ? item.endedAt : item.startedAt;
+  const depth = item.agentPath ? Math.max(0, item.agentPath.split("/").length - 2) : undefined;
   return (
     <button
       type="button"
+      data-child-session-id={item.childSessionId}
+      data-agent-path={item.agentPath}
+      data-agent-depth={depth}
+      data-parent-agent-path={item.parentAgentPath}
+      data-parent-session-id={item.parentSessionId}
+      data-work-status={item.status}
       className="flex w-full min-w-0 items-start gap-3 rounded-lg px-3 py-2.5 text-left text-ui-base transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
+      style={depth === undefined ? undefined : { paddingInlineStart: 12 + Math.min(4, Math.max(0, depth - 1)) * 12 }}
       onClick={() => onOpen(item)}
     >
       <span className="mt-0.5 text-foreground-subtle">
@@ -84,11 +103,32 @@ const DirectoryRow = memo(function DirectoryRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium text-foreground">{item.title}</span>
+          <span className={cn("inline-flex min-w-0 items-center gap-1.5 font-medium", subagentNameTextColor(item.title))}>
+            <SubagentAvatar name={item.title} status={item.status} />
+            <span className="truncate">{item.title}</span>
+          </span>
           <span className="shrink-0 text-ui-sm text-foreground-subtlest">
             {intl.formatMessage({ id: `subagentDirectory.status.${item.status}` })}
           </span>
         </span>
+        {item.agentPath && !/\/legacy_[a-f\d]+/.test(item.agentPath) ? (
+          <span className="mt-0.5 block break-all font-mono text-ui-sm text-foreground-subtle">
+            {item.agentPath}
+          </span>
+        ) : null}
+        {item.modelId || item.reasoningEffort || item.totalTokens !== undefined ? (
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-ui-sm text-foreground-subtlest">
+            {item.modelId ? (
+              <span className="min-w-0 break-all font-mono">
+                {item.providerId ? `${item.providerId}/` : ""}{item.modelId}
+              </span>
+            ) : null}
+            {item.reasoningEffort ? <span>{item.reasoningEffort}</span> : null}
+            {item.totalTokens !== undefined ? (
+              <span className="font-mono tabular-nums">{item.totalTokens.toLocaleString()} tokens</span>
+            ) : null}
+          </span>
+        ) : null}
         {item.summary ? (
           <span className="mt-0.5 block truncate text-ui-sm text-foreground-subtle">
             {item.summary}
@@ -155,6 +195,8 @@ const SubagentDirectoryContents = memo(function SubagentDirectoryContents({
     refreshKey: subagents?.revision ?? 0,
   });
   const running = subagents?.running ?? EMPTY_RUNNING;
+  const orderedRunning = useMemo(() => orderByAgentPath(running), [running]);
+  const orderedEnded = useMemo(() => orderByAgentPath(directory.ended.items), [directory.ended.items]);
   const endedTotal = subagents?.endedTotal ?? 0;
   const handleOpen = (item: DirectoryItem) => {
     onOpenSubagentSession(buildSubagentDirectoryOpenRequest(tab, item));
@@ -173,7 +215,7 @@ const SubagentDirectoryContents = memo(function SubagentDirectoryContents({
             {intl.formatMessage({ id: "subagentDirectory.running" })} · {running.length}
           </h3>
           {running.length > 0 ? (
-            running.map((item) => (
+            orderedRunning.map((item) => (
               <DirectoryRow key={item.childSessionId} item={item} onOpen={handleOpen} />
             ))
           ) : (
@@ -187,7 +229,7 @@ const SubagentDirectoryContents = memo(function SubagentDirectoryContents({
           <h3 className="px-3 pb-1.5 text-ui-sm font-medium text-foreground-subtlest">
             {intl.formatMessage({ id: "subagentDirectory.ended" })} · {endedTotal}
           </h3>
-          {directory.ended.items.map((item) => (
+          {orderedEnded.map((item) => (
             <DirectoryRow key={item.childSessionId} item={item} onOpen={handleOpen} />
           ))}
           {directory.ended.nextCursor ? (

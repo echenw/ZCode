@@ -193,3 +193,8 @@ describe("toolIdentity", () => {
     });
   });
 });
+
+
+it.each(["collaboration_spawn_agent", "custom_spawn_agent", "mcp__tools__send_message"])("does not infer built-in identity from untrusted wire %s", (toolName) => {
+  expect(resolveToolCallIdentity({ toolName }).family).toBe("unknown");
+});

@@ -7,6 +7,10 @@ import {
 } from "@/app-shell/animatedSidePanePanelModel.js";
 
 describe("AnimatedSidePanePanel layout", () => {
+  it("offers the agent directory only for a concrete session with an opener", () => {
+    expect(resolveOpenTabLauncherItemIds({ developerToolsEnabled: false, hasReviewTab: false, canOpenAgents: true })).toContain("agents");
+    expect(resolveOpenTabLauncherItemIds({ developerToolsEnabled: false, hasReviewTab: false })).not.toContain("agents");
+  });
   it("defers heavy PreviewPane content while the active code tab is only a narrow viewport sliver", () => {
     expect(
       shouldRenderPreviewPaneHeavyContent({

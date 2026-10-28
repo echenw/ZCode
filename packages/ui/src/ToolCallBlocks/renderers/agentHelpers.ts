@@ -161,9 +161,9 @@ export function getAgentKindLabel(
   // 回退 general-purpose，首帧会误报、之后再跳成真实类型。只有 inputPreviewComplete 明确为 true
   // 才能确认字段确实省略；已投影的 subagentRow 类型则作为 runtime 权威结果优先展示。
   const explicitName =
+    readCodexSubagentNickname(toolCall) ??
     (authoritativeAgentType?.trim() || undefined) ??
     readAgentNameFromRecord(outputRecord) ??
-    readCodexSubagentNickname(toolCall) ??
     readAgentNameFromRecord(inputRecord) ??
     rawName;
   if (explicitName) {
@@ -189,42 +189,6 @@ function readAgentColorFromRecord(value: Record<string, unknown> | null): string
   return value ? readStringField(value, ["color", "agentColor", "agent_color"]) : undefined;
 }
 
-export function readBackgroundAgentInfo(toolCall: AgentToolCall) {
-  const raw = isPlainRecord(toolCall.raw) ? toolCall.raw : null;
-  const meta = raw && isPlainRecord(raw._meta) ? raw._meta : null;
-  const zcode = meta && isPlainRecord(meta.zcode) ? meta.zcode : null;
-  const zcodeBackgroundAgent =
-    zcode && isPlainRecord(zcode.backgroundAgent) ? zcode.backgroundAgent : null;
-  const taskNotification =
-    zcode && isPlainRecord(zcode.taskNotification) ? zcode.taskNotification : null;
-  const backgroundAgent = zcodeBackgroundAgent;
-  const input = isPlainRecord(toolCall.input) ? toolCall.input : null;
-  const outputText = readTextFromUnknown(toolCall.output);
-  const outputFile =
-    (taskNotification && readStringField(taskNotification, ["outputFile", "output_file"])) ??
-    (backgroundAgent && readStringField(backgroundAgent, ["outputFile", "output_file"])) ??
-    outputText?.match(/output_file:\s*([^\s]+)/i)?.[1];
-
-  if (input?.run_in_background !== true && input?.runInBackground !== true && !outputFile) {
-    return null;
-  }
-
-  return { outputFile };
-}
-
-export function getAgentActivityContent(toolCall: AgentToolCall) {
-  const taskNotificationResult =
-    readStringFromNestedRecord(toolCall.raw, ["_meta", "zcode", "taskNotification", "result"]) ??
-    readStringFromNestedRecord(toolCall.raw, ["_meta", "zcode", "taskNotification", "summary"]);
-  if (taskNotificationResult) {
-    // background Agent 的 output_file 是完整 sidechain transcript，
-    // task-notification result 才是适合用户阅读的完成摘要。优先展示摘要，避免展开后被 JSONL 淹没。
-    return taskNotificationResult;
-  }
-
-  return toolCall.content?.trim();
-}
-
 export function getAgentPrimaryText(toolCall: AgentToolCall, fallbackLabel: string) {
   const nickname = readCodexSubagentNickname(toolCall);
   if (nickname) {
@@ -239,7 +203,7 @@ export function getAgentPrimaryText(toolCall: AgentToolCall, fallbackLabel: stri
   }
 
   if (isPlainRecord(toolCall.input)) {
-    const description = readStringField(toolCall.input, ["description"]);
+    const description = readStringField(toolCall.input, ["description", "task_name"]);
     if (description) {
       return description;
     }
@@ -267,19 +231,4 @@ export function getAgentPrimaryText(toolCall: AgentToolCall, fallbackLabel: stri
   }
 
   return fallbackLabel;
-}
-
-export function getAgentPrompt(toolCall: AgentToolCall) {
-  if (isPlainRecord(toolCall.input)) {
-    const prompt = readStringField(toolCall.input, ["prompt", "message", "description"]);
-    if (prompt) {
-      return prompt;
-    }
-  }
-
-  if (typeof toolCall.input === "string" && toolCall.input.trim().length > 0) {
-    return toolCall.input.trim();
-  }
-
-  return undefined;
 }

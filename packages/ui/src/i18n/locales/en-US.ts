@@ -1,6 +1,14 @@
 import { requestSecurityMessagesEnUS } from "@/request-security-edition/messages.js";
 /** English translations */
 const enUS: Record<string, string> = {
+  "subagentControl.children": "Child agents {total} · {count} running",
+  "subagentControl.back": "Back to {name}",
+  "sidePane.launcher.agents": "View this conversation's agents and their status.",
+  "subagentControl.inputLabel": "New prompt for this agent",
+  "subagentControl.placeholder": "Send a new prompt to this agent…",
+  "subagentControl.pause": "Pause agent",
+  "subagentControl.send": "Send",
+  "subagentControl.error": "Agent action failed. Try again. Your unsent text has been kept.",
   "preview.image.copy": "Copy image",
   "preview.image.actions": "Image actions",
   "preview.image.added": "Added to chat",
@@ -1516,7 +1524,7 @@ const enUS: Record<string, string> = {
   "sidePane.workflowActor": "Workflow subagent",
   "sidePane.workflowScript": "Script steps",
   "sidePane.workflowArtifact": "Artifact",
-  "subagentDirectory.title": "Subagents",
+  "subagentDirectory.title": "Agents",
   "subagentDirectory.running": "Running",
   "subagentDirectory.runningEmpty": "No running subagents",
   "subagentDirectory.ended": "Ended",

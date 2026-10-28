@@ -60,14 +60,7 @@ import type {
   ConversationSnapshot,
   SessionConfigState,
 } from "@zcode/shared/zcode-protocol-v4";
-import {
-  ArrowUpIcon,
-  ClipboardPenLineIcon,
-  InfoIcon,
-  RotateCcwIcon,
-  SquareIcon,
-  XIcon,
-} from "lucide-react";
+import { ClipboardPenLineIcon, InfoIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import {
   ChatErrorBanner,
@@ -98,7 +91,7 @@ import {
   type ChatMediaAttachmentPreviewTarget,
 } from "@/ChatMediaAttachmentPreviewDialog.js";
 import type { LexicalChatInputHandle } from "@/LexicalChatInput.js";
-import { ChatPromptEditor } from "@/prompt-editor/ChatPromptEditor.js";
+import { ChatPromptEditor, ChatPromptSubmitButton } from "@/prompt-editor/ChatPromptEditor.js";
 import { usePromptEditorDragState } from "@/prompt-editor/usePromptEditorDragState.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { advanceComposerDraftRevision } from "@/v4/composer/composerDraftRevision.js";
@@ -2385,17 +2378,12 @@ function ConversationComposerImpl({
         ) : null}
         {showStopControl ? (
           <ControlHintTooltip title={stopTooltipTitle} shortcut="Esc">
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon-md"
+            <ChatPromptSubmitButton
+              action="stop"
               onClick={handleStopClick}
               data-testid={TID_V4_STOP}
-              aria-label={stopTooltipTitle}
-            >
-              <SquareIcon className="size-4 fill-current" />
-              <span className="sr-only">{stopTooltipTitle}</span>
-            </Button>
+              label={stopTooltipTitle}
+            />
           </ControlHintTooltip>
         ) : (
           <ControlHintTooltip
@@ -2404,18 +2392,14 @@ function ConversationComposerImpl({
             open={Boolean(modifierTooltip) || sendTooltipOpen}
             onOpenChange={setSendTooltipOpen}
           >
-            <Button
-              type="submit"
-              size="icon-md"
+            <ChatPromptSubmitButton
               disabled={!canSend}
               onClick={handleSendButtonClick}
               data-testid={TID_V4_COMPOSER_SEND}
-              aria-label={resolvedSendTooltipTitle}
-              className="cursor-pointer gap-1 rounded-lg bg-brand text-ui-base text-foreground-inverse hover:bg-brand/80"
-            >
-              {pending ? <Spinner className="size-4" /> : <ArrowUpIcon className="size-4" />}
-              <span className="sr-only">{resolvedSendTooltipTitle}</span>
-            </Button>
+              label={resolvedSendTooltipTitle}
+              pending={pending}
+              className="cursor-pointer"
+            />
           </ControlHintTooltip>
         )}
       </div>

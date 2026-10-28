@@ -21,11 +21,30 @@ vi.mock("@/hooks/useSessionSubagents.js", () => ({
       items: [
         {
           childSessionId: "child-failed",
+          agentPath: "/root/a/b/c",
+          parentAgentPath: "/root/a/b",
+          parentSessionId: "grandchild-session",
+          rootSessionId: "root-session",
+          providerId: "provider-c",
+          modelId: "model-c",
+          reasoningEffort: "high",
+          totalTokens: 0,
           subagentType: "general-purpose",
           title: "Run verification",
           summary: "Provider request failed",
           status: "failed",
           endedAt: Date.now() - 60_000,
+        },
+        {
+          childSessionId: "grandchild-session",
+          agentPath: "/root/a/b",
+          parentAgentPath: "/root/a",
+          parentSessionId: "child-running",
+          rootSessionId: "root-session",
+          subagentType: "general-purpose",
+          title: "Prepare verification",
+          status: "success",
+          endedAt: Date.now() - 30_000,
         },
       ],
     },
@@ -48,6 +67,14 @@ vi.mock("@/v4/useConversationProjection.js", () => ({
         running: [
           {
             childSessionId: "child-running",
+            agentPath: "/root/a",
+            parentAgentPath: "/root",
+            parentSessionId: "root-session",
+            rootSessionId: "root-session",
+            providerId: "provider-a",
+            modelId: "model-a",
+            reasoningEffort: "medium",
+            totalTokens: 128,
             subagentType: "Explore",
             title: "Inspect source tree",
             status: "blocked",
@@ -99,6 +126,25 @@ describe("SubagentDirectorySidePane", () => {
     expect(html).toContain("subagentDirectory.showMore");
   });
 
+  it("shows fourth-level identity and authoritative model/usage while ordering parents before children", async () => {
+    const { SubagentDirectorySidePane } = await import("@/app-shell/SubagentDirectorySidePane.js");
+    const html = renderToStaticMarkup(
+      createElement(SubagentDirectorySidePane, { tab, onOpenSubagentSession: vi.fn() }),
+    );
+
+    expect(html).toContain('data-agent-path="/root/a/b/c"');
+    expect(html).toContain('data-agent-depth="3"');
+    expect(html).toContain('data-parent-agent-path="/root/a/b"');
+    expect(html).toContain('data-parent-session-id="grandchild-session"');
+    expect(html).toContain("provider-c/model-c");
+    expect(html).toContain("high");
+    expect(html).toContain("0 tokens");
+    expect(html).toContain("provider-a/model-a");
+    expect(html).toContain("128 tokens");
+    expect(html.indexOf('data-agent-path="/root/a/b"'))
+      .toBeLessThan(html.indexOf('data-agent-path="/root/a/b/c"'));
+  });
+
   it("builds a scoped detail request that preserves remote workspace identity", async () => {
     const { buildSubagentDirectoryOpenRequest } =
       await import("@/app-shell/SubagentDirectorySidePane.js");
@@ -118,6 +164,30 @@ describe("SubagentDirectorySidePane", () => {
       childSessionId: "child-failed",
       subagentType: "Explore",
       title: "Inspect source tree",
+    });
+  });
+
+  it("opens a fourth-level item through its actual parent instead of the root directory parent", async () => {
+    const { buildSubagentDirectoryOpenRequest } =
+      await import("@/app-shell/SubagentDirectorySidePane.js");
+    expect(buildSubagentDirectoryOpenRequest(tab, {
+      childSessionId: "fourth-level-session",
+      parentSessionId: "grandchild-session",
+      rootSessionId: "root-session",
+      agentPath: "/root/a/b/c",
+      parentAgentPath: "/root/a/b",
+      subagentType: "general-purpose",
+      title: "Fourth-level verification",
+      status: "success",
+    })).toEqual({
+      workspacePath: "/workspace",
+      workspaceIdentity: "ssh://host/workspace",
+      remoteSessionId: "remote-session",
+      rootSessionId: "root-session",
+      parentSessionId: "grandchild-session",
+      childSessionId: "fourth-level-session",
+      subagentType: "general-purpose",
+      title: "Fourth-level verification",
     });
   });
 });

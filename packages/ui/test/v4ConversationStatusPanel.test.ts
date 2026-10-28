@@ -1613,7 +1613,8 @@ describe("ConversationStatusPanel", () => {
     expect(html).toContain('data-status-section="agent"');
     expect(html).toContain("chat.statusPanel.terminals");
     expect(html).toContain("chat.statusPanel.agents");
-    expect(html).toContain("lucide-bot");
+    expect(html.match(/data-subagent-avatar="true"/g)).toHaveLength(3);
+    expect(html).toContain('data-face-state="scanning"');
     expect(html).toContain("lucide-square-terminal");
     expect(html).not.toContain("subagent · packages结构分析");
     expect(html).not.toContain("bash · 启动开发服务器");
@@ -1791,5 +1792,26 @@ describe("ConversationStatusPanel", () => {
 
     statusPanelCapture.radioGroups[0]?.onValueChange?.("auto");
     expect(onVariantChange).toHaveBeenLastCalledWith(null);
+  });
+});
+
+
+describe("Multi-Agent V2 native status panel", () => {
+  it("opens a grandchild through its real parent and renders canonical paths in tree order", async () => {
+    const child = runningSubagent({ childSessionId: "parent-agent", agentPath: "/root/research", parentAgentPath: "/root", parentSessionId: "root-session", rootSessionId: "root-session", startedAt: 20 });
+    const grandchild = runningSubagent({ childSessionId: "grandchild-agent", agentPath: "/root/research/verify", parentAgentPath: "/root/research", parentSessionId: "parent-agent", rootSessionId: "root-session", status: "waiting", startedAt: 10 });
+    const { buildRunningSubagentOpenRequest } = await import("@/v4/ConversationStatusPanel.js");
+    expect(buildRunningSubagentOpenRequest({ parentSessionId: "root-session", rootSessionId: "root-session", subagent: grandchild })?.parentSessionId).toBe("parent-agent");
+    const html = await renderStatusPanel({
+      gitSummary: null, gitWorktreeChangeSummary: null, summaryPanelVariantOverride: "panel",
+      parentSessionId: "root-session", rootSessionId: "root-session",
+      agentSectionOpen: true, onOpenSubagentSession: vi.fn(),
+      runningSubagents: [grandchild, child],
+    });
+    expect(html).toContain('data-agent-path="/root/research/verify"');
+    expect(html).toContain('data-agent-depth="2"');
+    expect(html).toContain('data-work-status="waiting"');
+    expect(html).toContain("subagentDirectory.status.waiting");
+    expect(html.indexOf('data-agent-path="/root/research"')).toBeLessThan(html.indexOf('data-agent-path="/root/research/verify"'));
   });
 });

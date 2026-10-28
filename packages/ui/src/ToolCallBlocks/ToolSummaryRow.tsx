@@ -89,8 +89,9 @@ function SummaryLeadingContent({
       {kindDetail ? <span className="min-w-0 shrink-0">{kindDetail}</span> : null}
       {sourceLabel ? (
         <span
+          data-testid="tool-summary-source"
           className={cn(
-            "shrink-0 rounded border border-border bg-background-alt px-1.5 py-0.5 text-ui-xs leading-none text-foreground-subtlest",
+            "shrink-0 whitespace-nowrap rounded border border-border bg-background-alt px-1.5 py-0.5 text-ui-xs leading-none text-foreground-subtlest",
             prioritizePrimaryText && "@max-[360px]/conversation:hidden",
           )}
         >

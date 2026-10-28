@@ -1,6 +1,9 @@
 import { SendIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { subagentNameTextColor } from "@/lib/subagentColors.js";
+import { cn } from "@/components/lib/utils.js";
+import { SubagentAvatar } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
 import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
@@ -70,15 +73,18 @@ function DetailField({
   label,
   value,
   mono = false,
+  testId,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  testId?: string;
 }) {
   return (
     <div className="space-y-1">
       <dt className="text-ui-base font-medium text-foreground-subtle">{label}</dt>
       <dd
+        data-testid={testId}
         className={
           mono
             ? "whitespace-pre-wrap break-words font-mono text-ui-base text-foreground"
@@ -106,9 +112,11 @@ export function SendMessageToolCallBlock(context: ToolCallBlockRenderContext) {
     (directOutput ? undefined : readText(toolCall.output)) ??
     (rawResultOutput ? undefined : readText(rawResultContent));
   const summary = readStringField(input, ["summary"]);
-  const target = readStringField(input, ["to"]);
+  const target =
+    messageDisplay?.recipientName ??
+    readStringField(output, ["recipientName", "nickname"]) ??
+    readStringField(input, ["to", "target"]);
   const message = readStringField(input, ["message"]);
-  // streaming input 首帧可能还没有字段，不能为一个空详情面板提供展开入口。
   const hasDetails = Boolean(target || summary || message);
   const outputMessage = readStringField(output, ["message"]);
   const outputError = readStringField(output, ["error"]);
@@ -140,8 +148,8 @@ export function SendMessageToolCallBlock(context: ToolCallBlockRenderContext) {
         ? "chat.toolCall.status.stopped"
         : undefined;
   const primaryText = useMemo(
-    () => <span className="min-w-0 truncate">{summary ?? toolCall.title ?? "SendMessage"}</span>,
-    [summary, toolCall.title],
+    () => <span className="min-w-0 truncate">{summary ?? message ?? toolCall.title ?? "SendMessage"}</span>,
+    [summary, message, toolCall.title],
   );
   const secondaryText = useMemo(
     () =>
@@ -150,7 +158,17 @@ export function SendMessageToolCallBlock(context: ToolCallBlockRenderContext) {
           <span className="shrink-0">
             {intl.formatMessage({ id: "chat.toolCall.sendMessage.to" })}
           </span>
-          <code className="min-w-0 truncate font-mono">{target}</code>
+          <code
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1 truncate font-mono",
+              target !== "Main" && target !== "/root" && subagentNameTextColor(target),
+            )}
+          >
+            {target !== "Main" && target !== "/root" ? (
+              <SubagentAvatar name={target} className="size-3.5" />
+            ) : null}
+            {target}
+          </code>
         </span>
       ) : undefined,
     [intl, target],
@@ -176,6 +194,7 @@ export function SendMessageToolCallBlock(context: ToolCallBlockRenderContext) {
             <DetailField
               label={intl.formatMessage({ id: "chat.toolCall.sendMessage.message" })}
               value={message}
+              testId="agent-message-body"
             />
           ) : null}
         </dl>

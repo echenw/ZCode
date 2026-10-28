@@ -1,5 +1,6 @@
 import { GenUiMessageResponse } from "@/gen-ui/index.js";
 import { ConversationUserInputBubble } from "@/v4/ConversationUserInputBubble.js";
+import { WorkflowNotificationToolRow } from "@/v4/WorkflowNotificationToolRow.js";
 import { expandTopicInputMessages } from "@/v4/topicInputMessages.js";
 import { ConnectedBotGroupDeliveryAction } from "@/v4/BotGroupDeliveryAction.js";
 /* oxlint-disable eslint(max-lines) -- v4 逐行 row 渲染分发集中收口（每种 row 一个 memo 叶子 + timelineMarker 分隔线），拆分会打散行类型对照。 */
@@ -2340,6 +2341,21 @@ function ConversationRowViewImpl({
 }: ConversationRowViewProps) {
   switch (row.kind) {
     case "userInput":
+      if (row.agentMessage) {
+        return (
+          <RowShell rowId={row.rowId} className="py-1">
+            <WorkflowNotificationToolRow
+              notification={{ kind: "agentMail", ...row.agentMessage }}
+              runName={
+                row.agentMessage.senderName ??
+                (row.agentMessage.senderPath === "/root" ? "Main" : row.agentMessage.senderPath)
+              }
+              testIdKey={`mail-${context.sessionId ?? "unknown"}-${row.entityId ?? row.rowId}`}
+              theme={context.theme}
+            />
+          </RowShell>
+        );
+      }
       return (
         <UserInputRowView
           row={row}

@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { TooltipProvider } from "@/components/ui/tooltip.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubagentSessionSidePane } from "@/app-shell/SubagentSessionSidePane.js";
 import {
@@ -12,6 +13,7 @@ import { openSubagentSessionFromSummary } from "@/v4/ConversationAgentToolCallRo
 import type { ConversationRowRenderContext } from "@/v4/conversationRowContext.js";
 
 const paneState = vi.hoisted(() => ({ props: null as unknown }));
+const renderToStaticMarkup = (node: ReactNode) => renderMarkup(createElement(TooltipProvider, null, node));
 
 vi.mock("@/v4/SessionPane.js", async () => {
   const React = await import("react");
@@ -26,10 +28,15 @@ vi.mock("@/v4/SessionPane.js", async () => {
 vi.mock("@/v4/V4ConversationContext.js", async () => {
   const React = await import("react");
   return {
+    useV4Conversation: () => ({ layer: { acquire: vi.fn() }, sendCommand: vi.fn() }),
     V4PaneConversationProvider: ({ children }: { children?: ReactNode }) =>
       React.createElement(React.Fragment, null, children),
   };
 });
+
+vi.mock("@/i18n/IntlProvider.js", () => ({
+  useZCodeIntl: () => ({ intl: { formatMessage: ({ id }: { id: string }) => id } }),
+}));
 
 describe("subagent side pane tabs", () => {
   afterEach(() => {

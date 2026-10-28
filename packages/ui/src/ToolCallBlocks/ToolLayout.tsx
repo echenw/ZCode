@@ -361,3 +361,55 @@ function ToolLayoutComponent({
 
 export const ToolLayout = memo(ToolLayoutComponent);
 ToolLayout.displayName = "ToolLayout";
+
+const NOTIFICATION_PREVIEW_MAX_LENGTH = 160;
+
+/** 原工作流提问/回复的纯展示：摘要折为单行，正文仍由原通知或消息入口提供。 */
+export function NotificationToolRow({
+  summary,
+  fallbackSummary,
+  primaryText,
+  ...props
+}: Omit<ToolLayoutProps, "primaryText" | "hideSecondaryTextWhenOpen"> & {
+  summary?: string;
+  fallbackSummary?: ReactNode;
+  primaryText?: ReactNode;
+}) {
+  const collapsed = summary?.replace(/\s+/gu, " ").trim();
+  const preview =
+    collapsed && collapsed.length > NOTIFICATION_PREVIEW_MAX_LENGTH
+      ? `${collapsed.slice(0, NOTIFICATION_PREVIEW_MAX_LENGTH)}…`
+      : collapsed;
+  return (
+    <ToolLayout
+      {...props}
+      hideSecondaryTextWhenOpen
+      primaryText={
+        primaryText ?? <span className="min-w-0 truncate">{preview || fallbackSummary}</span>
+      }
+    />
+  );
+}
+
+/** 原问答正文面板；共享视觉，不创建工作流或回答状态。 */
+export function NotificationProse({
+  children,
+  muted = false,
+  testId,
+}: {
+  children: ReactNode;
+  muted?: boolean;
+  testId?: string;
+}) {
+  return (
+    <p
+      data-testid={testId}
+      className={cn(
+        "whitespace-pre-wrap break-words rounded-lg border border-border bg-panel px-4 py-3 text-ui-base leading-5",
+        muted ? "text-foreground-subtle" : "text-foreground",
+      )}
+    >
+      {children}
+    </p>
+  );
+}

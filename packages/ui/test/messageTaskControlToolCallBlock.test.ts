@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ZCodeIntlProvider } from "@/i18n/IntlProvider.js";
 import type { TaskChatToolCallTreeNode } from "@/lib/toolCallTree.js";
+import { toolCallRowToLegacyNode } from "@/v4/toolCallRowAdapter.js";
 import { ToolCallBlock } from "@/ToolCallBlocks.js";
 import { RespondToCoordinatorToolCallBlock } from "@/ToolCallBlocks/renderers/respond-to-coordinator.js";
 import { SendMessageToolCallBlock } from "@/ToolCallBlocks/renderers/send-message.js";
@@ -68,6 +69,20 @@ function renderDedicatedToolCall(
 }
 
 describe("message and task control tool call routing", () => {
+  it("uses the persisted readable recipient name in the summary", () => {
+    const html = renderDedicatedToolCall(SendMessageToolCallBlock, {
+      toolId: "named-send",
+      toolName: "SendMessage",
+      kind: "SendMessage",
+      title: "SendMessage",
+      input: { to: "agent_opaque_id", summary: "同步结论", message: "Review" },
+      status: "completed",
+      raw: { display: { kind: "local_agent_message", status: "success", recipientName: "Ada" } },
+    });
+    expect(html).toContain("Ada");
+    expect(html).not.toContain("agent_opaque_id");
+  });
+
   it("routes SendMessage to a semantic summary", () => {
     const html = renderToolCall({
       toolId: "send-1",
@@ -181,6 +196,31 @@ describe("message and task control tool call routing", () => {
 });
 
 describe("message and task control tool call details", () => {
+  it.each([
+    { canToggle: false, forceOpen: false, details: false },
+    { canToggle: false, forceOpen: true, details: true },
+    { canToggle: true, forceOpen: true, details: true },
+  ])(
+    "keeps original SendMessage canToggle=$canToggle / forceOpen=$forceOpen behavior",
+    ({ canToggle, forceOpen, details }) => {
+      const html = renderDedicatedToolCall(
+        SendMessageToolCallBlock,
+        {
+          toolId: `message-toggle-${canToggle}-${forceOpen}`,
+          toolName: "SendMessage",
+          kind: "SendMessage",
+          title: "SendMessage",
+          input: { to: "Ada", summary: "Summary", message: "Full message content" },
+          status: "completed",
+          raw: {},
+        },
+        { canToggle, forceOpen },
+      );
+      expect(html.includes('data-testid="agent-message-body"')).toBe(details);
+      expect(html.includes('role="button"')).toBe(canToggle);
+    },
+  );
+
   it("renders only SendMessage target, summary, and message details", () => {
     const html = renderDedicatedToolCall(SendMessageToolCallBlock, {
       toolId: "send-details",
@@ -941,4 +981,20 @@ describe("message and task control terminal states", () => {
     expect(html).toContain(expected);
     expect(html).toContain("停止任务");
   });
+});
+
+
+it.each(["collaboration", "custom", "short"])("routes registered %s V2 wire rows through the original SendMessage renderer", (namespace) => {
+  const node = toolCallRowToLegacyNode({ rowId: 1, entityId: "message", turnId: "turn", createdAt: 1,
+    kind: "toolCall", toolCallId: "message", toolName: `${namespace}_send_message`,
+    multiAgentOperation: "send_message", status: "success", inputText: "",
+    input: { target: "/root/a", message: "review the patch" },
+    output: { text: "", display: { kind: "local_agent_message", status: "success", recipientName: "Ada" } },
+  });
+  const html = renderToolCall(node.toolCall);
+  expect(html).toContain("Ada");
+  expect(html).toContain("data-subagent-avatar");
+  expect(html).toContain("review the patch");
+  expect(html).toContain(`data-tool-name="${namespace}_send_message"`);
+  expect(html).toContain("lucide-send");
 });
