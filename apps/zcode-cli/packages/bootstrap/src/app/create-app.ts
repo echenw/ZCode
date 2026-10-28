@@ -14,6 +14,7 @@ import {
 } from "@zcode/adapters/exec";
 import { createNodeFileSystemAdapter } from "@zcode/adapters/fs";
 import { createNodeWebFetchHttpClientAdapter } from "@zcode/adapters/http";
+import { createNodeRemoteAgentMessageBoard } from "@zcode/adapters/multi-agent-board";
 import { createJimpImageProcessorAdapter } from "@zcode/adapters/image";
 import { createPopplerPdfDocumentAdapter } from "@zcode/adapters/pdf";
 import { createNodeSessionMailboxAdapter } from "@zcode/adapters/mailbox";
@@ -38,6 +39,7 @@ import {
   createSessionEvent,
   type ExecutionShellSelection,
   type MessageId,
+  type AgentMessageBoardRemotePort,
 } from "@zcode/contracts";
 import { isRemoteWorkspaceIdentity, resolveZCodeRuntimeEnv } from "@zcode/shared";
 import {
@@ -801,7 +803,22 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       registry: options.providerRegistry,
       currentSelection: () => getRuntime().getSessionModelSelection(),
     });
+    let multiAgentMessageBoardRemote: AgentMessageBoardRemotePort | undefined;
+    if (runtimeConfig.multiAgentV2?.enabled && runtimeConfig.multiAgentV2.messageBoardEnabled &&
+      !runtimeConfig.multiAgentV2.disableNativeTools && runtimeConfig.multiAgentV2.messageBoardRemote) {
+      try {
+        multiAgentMessageBoardRemote = createNodeRemoteAgentMessageBoard({
+          rootSessionId: runtimeConfig.multiAgentIdentity?.rootSessionId ?? sessionId,
+          config: runtimeConfig.multiAgentV2.messageBoardRemote,
+          env: options.env, network: configResult.config.network, logger,
+        });
+      } catch {
+        // Core reports a redacted optional-board initialization warning and keeps ordinary V2
+        // available. Never log the config or silently replace the configured remote backend.
+      }
+    }
     runtime = new AgentRuntime(sessionId, runtimeConfig, {
+      multiAgentMessageBoardRemote,
       ...(options.readSubagentRuntimeConfig
         ? {
             loadAgentDefinitions: async (input) => {

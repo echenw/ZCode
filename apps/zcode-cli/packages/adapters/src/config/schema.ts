@@ -61,6 +61,13 @@ const multiAgentV2Schema = z.object({
   preserveForkPrefix: z.boolean().optional(),
   delegationMode: z.enum(["explicit", "proactive"]).optional(),
   tokenBudget: positiveIntegerSchema.optional(),
+  messageBoardEnabled: z.boolean().optional(),
+  messageBoardInMemory: z.boolean().optional(),
+  messageBoardRemote: z.object({
+    url: z.string().url().regex(/^https?:\/\//),
+    bearerToken: z.string().min(1).optional(),
+    bearerTokenEnvVar: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional(),
+  }).strict().optional(),
 }).strict().superRefine((config, context) => {
   try { resolveMultiAgentWaitTimeouts(config); }
   catch (error) { context.addIssue({ code: "custom", message: error instanceof Error ? error.message : "Invalid multi-agent wait settings" }); }

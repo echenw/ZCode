@@ -29,6 +29,8 @@ describe("Multi-Agent V2 configuration", () => {
       subagentDeveloperInstructions: "Child developer sentinel.", multiAgentModeHintText: "Mode guidance sentinel.",
       hideSpawnAgentMetadata: false, preserveForkPrefix: true,
       delegationMode: "proactive", tokenBudget: 100_000,
+      messageBoardEnabled: true, messageBoardInMemory: false,
+      messageBoardRemote: { url: "https://board.example.test/rpc", bearerTokenEnvVar: "ZCODE_TEST_BOARD_TOKEN" },
     };
     try {
       await writeFile(configPath, JSON.stringify({ multiAgentV2 }));
@@ -68,7 +70,8 @@ describe("Multi-Agent V2 configuration", () => {
     { minWaitTimeoutMs: 40, maxWaitTimeoutMs: 20, defaultWaitTimeoutMs: 30 },
     { minWaitTimeoutMs: 10, maxWaitTimeoutMs: 20, defaultWaitTimeoutMs: 21 },
     { rootAgentUsageHintText: false }, { subagentDeveloperInstructions: 123 },
-])(
+    { messageBoardEnabled: "yes" }, { messageBoardRemote: { url: "file:///tmp/board" } },
+    { messageBoardRemote: { url: "https://board.example.test", bearerTokenEnvVar: "bad name" } }])(
     "reports invalid V2 config instead of silently enabling it: %j", async (multiAgentV2) => {
       const dir = await mkdtemp(join(tmpdir(), "zcode-v2-invalid-"));
       const configPath = join(dir, "config.json");

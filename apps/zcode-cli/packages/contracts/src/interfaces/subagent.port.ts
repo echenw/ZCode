@@ -1,3 +1,4 @@
+import type { AgentMessageBoardPort } from "../multi-agent-board/index.js";
 import type { CollaborationMode } from "./session.port.js";
 import type { ResolvedUserInstructions } from "./context-source.port.js";
 // ============================================================
@@ -141,6 +142,7 @@ export interface MultiAgentControlPort {
 }
 
 export interface SubagentPort {
+  messageBoard?: AgentMessageBoardPort;
   multiAgent?: MultiAgentControlPort;
   restoreTask?(taskId: string): void;
   launch(request: SubagentLaunchRequest, options?: SubagentLaunchOptions): Promise<AgentOutput>;

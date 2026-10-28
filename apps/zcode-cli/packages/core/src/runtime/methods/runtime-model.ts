@@ -147,6 +147,12 @@ function withRootTokenUsage(runtime: AgentRuntimeInternal, model: Model): Model 
   const prepare = async (request: ModelRequest) => {
     await runtime.multiAgentPersistence?.ready;
     assertMultiAgentTokenBudget(runtime.multiAgentRegistry, runtime.config.multiAgentIdentity, runtime.config.multiAgentV2);
+    if (runtime.config.multiAgentIdentity && runtime.multiAgentMessageBoard?.prepareForTurn) {
+      const trace = getCurrentModelInvocationContext()?.traceContext ?? runtime.rootTraceContext;
+      await runtime.multiAgentMessageBoard.prepareForTurn(runtime.config.multiAgentIdentity, {
+        requestId: `board-model:${trace.turnId ?? "none"}`, trace, signal: request.abortSignal,
+      });
+    }
   };
   return Object.freeze<Model>({
     ...model,

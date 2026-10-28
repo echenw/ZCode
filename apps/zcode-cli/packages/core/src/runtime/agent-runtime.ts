@@ -1,4 +1,5 @@
 import { multiAgentRootId } from "../multi-agent/index.js";
+import { createAgentMessageBoard } from "../multi-agent-board/index.js";
 import { createSessionScopedRuntimeTaskRegistry } from "../runtime-task/registry.js";
 import { configureOffPeakRuntime, controlOffPeakRuntime } from "./off-peak/runtime.js";
 import {
@@ -219,6 +220,7 @@ export class AgentRuntime {
   private runtimeTaskRegistry: RuntimeTaskRegistry;
   private multiAgentRegistry?: RuntimeTaskRegistry;
   private multiAgentPersistence?: import("../multi-agent/index.js").MultiAgentPersistence;
+  private multiAgentMessageBoard?: import("@zcode/contracts").AgentMessageBoardOwner;
   // 「run 还欠着决定、主代理闲着」的提醒钟；由命令队列的忙 / 闲沿驱动，beginShutdown 停掉。
   private workflowBlockedReminder: WorkflowBlockedReminderClock;
   private branchGeneration = 0;
@@ -367,6 +369,26 @@ export class AgentRuntime {
     this.pdfDocumentPort = deps.pdfDocumentPort;
     this.multiAgentPersistence = deps.multiAgentPersistence;
     this.subagentPort = deps.subagentPort ?? runtime.createDefaultSubagentPort(deps);
+    if (this.config.multiAgentV2?.enabled && this.config.multiAgentV2.messageBoardEnabled &&
+      this.config.multiAgentIdentity && this.multiAgentRegistry && this.subagentPort) {
+      try {
+        // graph 已建立/正在恢复；Child 只复用同根 owner，不按 runtime 创建独立板缓存。
+        this.multiAgentMessageBoard = deps.multiAgentMessageBoard ?? createAgentMessageBoard({
+          config: this.config.multiAgentV2, rootSessionId: this.config.multiAgentIdentity.rootSessionId,
+          registry: this.multiAgentRegistry, sessionStore: this.sessionStore,
+          ready: this.multiAgentPersistence?.ready, now: () => this.now(), remote: deps.multiAgentMessageBoardRemote,
+        });
+        this.subagentPort.messageBoard = this.multiAgentMessageBoard?.forAgent(this.config.multiAgentIdentity,
+          this.config.toolset === "explore" ? { readOnly: true } : undefined);
+      } catch {
+        // 可选板不可用不能阻断普通任务；不把配置/鉴权错误静默降级到另一个后端。
+        this.multiAgentMessageBoard = undefined;
+        this.subagentPort.messageBoard = undefined;
+        this.logger?.warn("Agent message-board initialization failed; its tools are unavailable for this runtime.", {
+          code: "message_board_initialization_failed",
+        });
+      }
+    }
     this.dynamicWorkflowRunPort = deps.dynamicWorkflowRunPort;
     // GUI「配置」解析子代理模型用的目录（与工具上下文拿的是同一个端口）。
     this.modelCatalogPort = deps.modelCatalogPort;
@@ -413,6 +435,7 @@ export class AgentRuntime {
     this.shuttingDown = true;
     const identity = this.config.multiAgentIdentity;
     if (identity?.agentPath === "/root") {
+      this.multiAgentMessageBoard?.dispose?.();
       const children = Object.values(this.multiAgentRegistry?.all() ?? {}).filter(
         (task) => task.type === "local_agent" && task.multiAgent?.rootSessionId === identity.rootSessionId &&
           task.multiAgent.agentPath !== "/root" && !isTerminalRuntimeTask(task),

@@ -1,3 +1,4 @@
+import type { AgentMessageBoardConfig, AgentMessageBoardOperation } from "../multi-agent-board/index.js";
 import { z } from "zod";
 import { toToolJsonSchema } from "../tools/json-schema.js";
 
@@ -11,7 +12,7 @@ export const MULTI_AGENT_WAIT_MAX_MS = 3_600_000;
 
 export type { MultiAgentIdentity } from "./identity.js";
 export { allocateMultiAgentNicknames } from "./identity.js";
-export interface MultiAgentV2Config {
+export interface MultiAgentV2Config extends AgentMessageBoardConfig {
   enabled?: boolean;
   toolNamespace?: string;
   maxConcurrentThreadsPerSession?: number;
@@ -47,7 +48,7 @@ export function resolveMultiAgentWaitTimeouts(config: MultiAgentV2Config): { min
   return timeouts;
 }
 
-export function multiAgentToolName(operation: MultiAgentOperation, namespace = MULTI_AGENT_DEFAULT_NAMESPACE): string {
+export function multiAgentToolName(operation: MultiAgentOperation | AgentMessageBoardOperation, namespace = MULTI_AGENT_DEFAULT_NAMESPACE): string {
   if (namespace !== "" && !/^[A-Za-z0-9_-]{1,64}$/.test(namespace)) {
     throw new Error("Multi-agent tool namespace must use 1–64 ASCII letters, digits, underscores or hyphens");
   }

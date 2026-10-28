@@ -396,6 +396,7 @@ export function finishActiveTurn(
 ): void {
   if (activeTurn !== undefined && this.activeTurn === activeTurn) {
     this.activeTurn = undefined;
+    if (this.config.multiAgentIdentity) this.multiAgentMessageBoard?.finishTurn?.(this.config.multiAgentIdentity, activeTurn.turnId);
     updateMultiAgentRootTurn(this.multiAgentRegistry, this.config.multiAgentIdentity, false);
   }
 }

@@ -736,11 +736,13 @@ modules:
   - id: cli-multi-agent-contracts
     roots:
       - apps/zcode-cli/packages/contracts/src/multi-agent
+      - apps/zcode-cli/packages/contracts/src/multi-agent-board
     managed: true
     requires:
       - zcode-cli
     publicEntrypoints:
       - apps/zcode-cli/packages/contracts/src/multi-agent/index.ts
+      - apps/zcode-cli/packages/contracts/src/multi-agent-board/index.ts
       - apps/zcode-cli/packages/contracts/src/multi-agent/contract.ts
     layers:
       domain: .
@@ -757,6 +759,21 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/multi-agent/index.ts
       - apps/zcode-cli/packages/core/src/multi-agent/contract.ts
+    layers:
+      adapters: .
+    owner: agent-runtime
+  # cli-multi-agent-board：由 architecture:adopt 登记
+  - id: cli-multi-agent-board
+    roots:
+      - apps/zcode-cli/packages/core/src/multi-agent-board
+    managed: true
+    requires:
+      - cli-multi-agent
+      - cli-multi-agent-contracts
+      - zcode-cli
+    publicEntrypoints:
+      - apps/zcode-cli/packages/core/src/multi-agent-board/index.ts
+      - apps/zcode-cli/packages/core/src/multi-agent-board/contract.ts
     layers:
       adapters: .
     owner: agent-runtime
@@ -787,6 +804,21 @@ modules:
     layers:
       ui: .
     owner: agent-runtime
+  # cli-multi-agent-board-transport：由 architecture:adopt 登记
+  - id: cli-multi-agent-board-transport
+    roots:
+      - apps/zcode-cli/packages/adapters/src/multi-agent-board
+    managed: true
+    requires:
+      - cli-multi-agent-contracts
+      - shared
+      - zcode-cli
+    publicEntrypoints:
+      - apps/zcode-cli/packages/adapters/src/multi-agent-board/index.ts
+      - apps/zcode-cli/packages/adapters/src/multi-agent-board/contract.ts
+    layers:
+      adapters: .
+    owner: runtime
   # cli-agent-communication-display：由 architecture:adopt 登记
   - id: cli-agent-communication-display
     roots:

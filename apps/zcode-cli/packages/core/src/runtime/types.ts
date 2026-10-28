@@ -331,6 +331,10 @@ export interface AgentRuntimeDeps {
   /** Same root task owner; ordinary child task views remain session scoped. */
   multiAgentRegistry?: RuntimeTaskRegistry;
   multiAgentPersistence?: import("../multi-agent/index.js").MultiAgentPersistence;
+  /** Child runtimes reuse the root's optional discussion-board owner. */
+  multiAgentMessageBoard?: import("@zcode/contracts").AgentMessageBoardOwner;
+  /** Authorized Host transport only; credentials and HTTP/SSE policy stay outside Core. */
+  multiAgentMessageBoardRemote?: import("@zcode/contracts").AgentMessageBoardRemotePort;
   /** 只读目录入口；必须同步读取内存，不在请求收集阶段进行 I/O。 */
   getAgentDefinitions?: GetAgentDefinitions;
   /** 新父上下文读取一次；子执行不得继承此加载器。 */

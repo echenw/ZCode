@@ -30,6 +30,10 @@
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js"
     },
+    "./multi-agent-board": {
+      "types": "./dist/multi-agent-board/index.d.ts",
+      "import": "./dist/multi-agent-board/index.js"
+    },
     "./image": {
       "types": "./dist/image/index.d.ts",
       "import": "./dist/image/index.js"

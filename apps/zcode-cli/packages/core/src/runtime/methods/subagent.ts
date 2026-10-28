@@ -411,6 +411,7 @@ export function createDefaultSubagentPort(
             eventStore: this.eventStore,
             sessionStore: deps.sessionStore,
             ...(request.multiAgent ? { runtimeTaskRegistry: this.runtimeTaskRegistry, multiAgentRegistry: this.multiAgentRegistry, multiAgentPersistence: this.multiAgentPersistence,
+              multiAgentMessageBoard: this.multiAgentMessageBoard,
               getAgentDefinitions: this.getAgentDefinitions } : {}),
             // 子 runtime 继承父的模型请求准入端口：subagent 的请求 provider 同样看得见，
             // 它们该与父一样喂治理器信号（父是 observer 则子也是 observer）。

@@ -52,6 +52,7 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
     includeSkill: Boolean(runtime.skillPort),
     includeAgent: Boolean(runtime.subagentPort),
     multiAgentV2: runtime.subagentPort?.multiAgent?.config,
+    messageBoard: runtime.subagentPort?.messageBoard ? runtime.config.multiAgentV2 : undefined,
     includeSendMessage: runtime.subagentPort?.sendMessage !== undefined,
     includeRespondToCoordinator:
       runtime.config.taskType === "subagent_child" && Boolean(deps.coordinatorResponsePort),
