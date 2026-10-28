@@ -11,6 +11,48 @@ const AZURE_CONTEXT_LENGTH_ERROR =
 const GEMINI_CONTEXT_LENGTH_ERROR =
   "The input token count (131137) exceeds the maximum number of tokens allowed (131072).";
 
+describe("classifyModelFailure interrupted transports", () => {
+  it.each(["EPIPE", "ERR_STREAM_PREMATURE_CLOSE"])(
+    "recognizes structured %s failures, including wrapped and provider business errors",
+    (code) => {
+      const transportError = Object.assign(new Error("provider transport closed"), { code });
+      const failures = [
+        transportError,
+        new TypeError("fetch failed", { cause: transportError }),
+        new ProviderBusinessError({
+          providerId: "test-provider",
+          providerKind: "openai-compatible",
+          providerCode: code,
+          providerMessage: "provider transport closed",
+          responseStatus: 200,
+        }),
+      ];
+      for (const error of failures) {
+        expect(classifyModelFailure(error)).toMatchObject({
+          reason: "network_error",
+          retryReason: "network_error",
+          retryable: true,
+        });
+      }
+    },
+  );
+
+  it("does not infer a recoverable transport from error prose", () => {
+    expect(classifyModelFailure(new Error("EPIPE ERR_STREAM_PREMATURE_CLOSE"))).toMatchObject({
+      reason: "unknown",
+      retryable: false,
+    });
+  });
+
+  it("keeps caller cancellation terminal even when the transport closed", () => {
+    const controller = new AbortController();
+    controller.abort();
+    expect(
+      classifyModelFailure(Object.assign(new Error("closed"), { code: "EPIPE" }), controller.signal),
+    ).toMatchObject({ reason: "cancelled", retryable: false });
+  });
+});
+
 describe("classifyModelFailure context length errors", () => {
   it("maps the reported maximum context length message to context exceeded", () => {
     expect(classifyModelFailure(new Error(MAXIMUM_CONTEXT_LENGTH_ERROR))).toMatchObject({

@@ -435,8 +435,17 @@ async function runModelBackedTurnStepImpl(
       // 继续抛原 provider 文案会和首轮繁忙失败无法区分，UI 也就不能展示“自动重试达到最大次数”。
       finalError = createStartPlanBusyAutoRetryExhaustedError(finalError);
     }
-    // 无 fallback target 时工具已在上方 settlement；再次 abandon 会发布与终态矛盾的 ledger 事件。
-    if (!selectionFallbackResult?.settledAcceptedTools) {
+    // 不可重试或预算耗尽只终止当前模型 turn，不抹掉已接受工具的执行事实。
+    // 和模型 fallback 共用结算 Owner，保留真实/未知结果配对，供显式 followup 与冷恢复使用。
+    const settledAcceptedTools =
+      selectionFallbackResult?.settledAcceptedTools ||
+      (!state.turnAbortSignal.aborted &&
+        (await streamingToolCoordinator.settleForModelFailure(assistantCreatedAt)));
+    if (state.toolCallCount > toolCallCountBeforeStreamRecovery) {
+      completeOutputTokenRecovery(state.turnRequestState);
+    }
+    // 已结算的工具不能再倒退成 abandoned；取消仍走原有中断收口。
+    if (!settledAcceptedTools) {
       await streamingToolCoordinator.abandon(
         state.turnAbortSignal.aborted ? "cancelled" : "model_failed",
       );

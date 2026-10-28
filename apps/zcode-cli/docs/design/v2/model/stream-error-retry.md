@@ -8,6 +8,20 @@ app-server 模式默认开启模型流式输出。Vercel AI SDK 的 `streamText(
 
 ## 契约
 
+- 主代理和子代理共用同一错误分类。结构化传输码 `EPIPE` 和
+  `ERR_STREAM_PREMATURE_CLOSE` 与连接重置一样属于可重试网络错误；只有错误文本
+  提到断流、超时或这些码，不构成恢复证据。首个已提交事件之前复用 adapter 的默认
+  10 次重试，之后交给 Core 的既有 10 次安全锚点恢复，不增加第三层 Agent 重试。
+- Core 对纯正文/思考失败和已接受完整工具调用的失败使用同一恢复准入：最外层明确的
+  `retryable` / `context.retryable` 判定优先于 cause 中的旧分类及错误码、reason。
+  鉴权、权限、配置、协议不匹配、额度耗尽与取消不得因为 `rate_limited` 分类或文案中的
+  timeout 被改判为可重试；没有明确判定时只读取稳定的结构化瞬态码、reason 和错误类型。
+  既有 Start Plan 首输出前的独立 admission 策略保持原有作用域和预算。
+- 已接受工具的非瞬态失败或恢复预算耗尽时，先复用既有工具 settlement 保存真实结果，
+  对未执行/执行未知的调用保存 synthetic result，再以原错误结束当前 turn。
+  不发起新的模型请求，不发布 recovery retry，也不在结果提交之后追加矛盾的
+  `tool_abandoned`。后续显式 followup 与冷恢复必须看到同一组 call/result。
+
 - 对普通主请求（`preserveProviderStreamBoundaries` 未开启），如果一次模型 attempt
   正常结束但同时满足：`finishReason` 非 `stop`/`tool-calls`、text 为 0、reasoning
   为 0、tool call 为 0、usage 为 0，则 adapter 将其识别为 generic empty

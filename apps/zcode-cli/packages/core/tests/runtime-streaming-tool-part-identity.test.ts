@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createSessionId,
+  SessionEventType,
   type MessagePart,
   type ModelInputMessage,
   type ModelRequest,
@@ -34,9 +35,10 @@ function createFixture(
   options: {
     outcome?: FallbackOutcome;
     wrapped?: boolean;
-    streamFailure?: boolean;
+    streamFailure?: boolean | Error;
     earlyWriteFailure?: "pending" | "running" | false;
     delayEarlySchedule?: boolean;
+    waitForToolCompletion?: boolean;
   } = {},
 ) {
   const sessionId = createSessionId("streaming-part-identity");
@@ -52,9 +54,12 @@ function createFixture(
   const scheduleStarted = Promise.withResolvers<void>();
   const releaseSchedule = Promise.withResolvers<void>();
   const lateExecutionSettled = Promise.withResolvers<void>();
+  const toolCompleted = Promise.withResolvers<void>();
+  const eventStore = createTestSessionEventStore();
   const registry = createToolRegistry();
   const handler = vi.fn(async () => {
     if (options.outcome === "tool-error") throw new Error(READ_ERROR);
+    toolCompleted.resolve();
     return READ_OUTPUT;
   });
   let earlyWriteFailed = false;
@@ -121,7 +126,7 @@ function createFixture(
       titleGeneration: { enabled: false },
     },
     {
-      eventStore: createTestSessionEventStore(),
+      eventStore,
       sessionStore: store as unknown as SessionStorePort,
       toolRegistry: registry,
       modelFactory: createTestModelFactory({
@@ -140,7 +145,15 @@ function createFixture(
             };
             if (options.delayEarlySchedule) await scheduleStarted.promise;
             else if (options.earlyWriteFailure !== false) await earlyFailure.promise;
-            if (options.streamFailure) throw new Error("Model request timed out.");
+            if (options.waitForToolCompletion) await toolCompleted.promise;
+            if (options.streamFailure) {
+              throw options.streamFailure instanceof Error
+                ? options.streamFailure
+                : Object.assign(new Error("Model request timed out."), {
+                    code: "model_request_timeout",
+                    context: { reason: "timeout", retryable: true },
+                  });
+            }
             yield { type: "finish", finishReason: "tool-calls", usage: {} };
             return;
           }
@@ -185,6 +198,7 @@ function createFixture(
     hydrate,
     releaseSchedule,
     lateExecutionSettled,
+    events: () => eventStore.getEvents(sessionId),
   };
 }
 
@@ -203,6 +217,62 @@ function expectSingleRead(
 }
 
 describe("streaming tool attempt history", () => {
+  it("keeps an unclassified model failure terminal and saves synthetic results for followup", async () => {
+    const fixture = createFixture({
+      earlyWriteFailure: "running",
+      streamFailure: new Error("Turn failed"),
+    });
+    await expect(fixture.runtime.executeTurn("fail with an unknown model error")).rejects.toBeDefined();
+    expect(fixture.requests).toHaveLength(1);
+    expect(fixture.handler).not.toHaveBeenCalled();
+    expectSingleRead(await fixture.hydrate(), true, "Side effects may be unknown");
+    const events = await fixture.events();
+    expect(
+      events.filter((event) => event.type === SessionEventType.StreamRecoveryRetryStarted),
+    ).toHaveLength(0);
+
+    expect((await fixture.runtime.executeTurn("continue explicitly")).response).toBe("done");
+    expect(fixture.requests).toHaveLength(2);
+    expect(fixture.handler).not.toHaveBeenCalled();
+    expectSingleRead(fixture.requests[1]!.messages, true, "Side effects may be unknown");
+  });
+
+  it.each([
+    { reason: "auth_failed", code: "provider_not_configured" },
+    { reason: "rate_limited", code: "model_rate_limited" },
+    { reason: "invalid_request", code: "invalid_model_request" },
+  ])(
+    "settles an accepted tool without retrying $reason and preserves it for followup",
+    async ({ reason, code }) => {
+      const fixture = createFixture({
+        earlyWriteFailure: false,
+        waitForToolCompletion: true,
+        streamFailure: Object.assign(new Error("terminal provider failure"), {
+          code,
+          context: { reason, retryable: false },
+        }),
+      });
+      await expect(fixture.runtime.executeTurn("read before terminal failure")).rejects.toBeDefined();
+      expect(fixture.requests).toHaveLength(1);
+      expect(fixture.handler).toHaveBeenCalledTimes(1);
+      expectSingleRead(await fixture.hydrate(), false, READ_OUTPUT);
+      const events = await fixture.events();
+      expect(events.filter((event) => event.type === SessionEventType.StreamRecoveryRetryStarted))
+        .toHaveLength(0);
+      expect(events.filter((event) =>
+        event.type === SessionEventType.StreamingToolLedgerUpdated &&
+        (event.payload as { status?: string }).status === "tool_abandoned",
+      )).toHaveLength(0);
+
+      expect((await fixture.runtime.executeTurn("continue after provider recovers")).response).toBe(
+        "done",
+      );
+      expect(fixture.requests).toHaveLength(2);
+      expect(fixture.handler).toHaveBeenCalledTimes(1);
+      expectSingleRead(fixture.requests[1]!.messages, false, READ_OUTPUT);
+    },
+  );
+
   it.each([
     { outcome: "success", status: "completed", isError: false, content: READ_OUTPUT, calls: 1 },
     { outcome: "tool-error", status: "error", isError: true, content: READ_ERROR, calls: 1 },

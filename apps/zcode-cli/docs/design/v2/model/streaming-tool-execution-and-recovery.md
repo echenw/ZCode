@@ -288,6 +288,27 @@ chunks. Runtime should commit through the builder after checking ledger state.
 
 ## Failure Policy
 
+Recovery admission is the same before and after a complete client tool call.
+An explicit normalized retry decision takes precedence over generic error codes,
+reasons, nested causes, and message prose. Unknown errors and terminal failures
+do not start another model request. Existing request and stream retry budgets
+remain bounded and separate.
+
+```mermaid
+flowchart TD
+    A[Model stream failure] --> B[Core recovery admission]
+    B -->|Retryable and budget available| C[Settle tools and retry from anchor]
+    B -->|Terminal or budget exhausted| D[Settle tools and preserve original error]
+    D --> E[Explicit followup or cold resume]
+```
+
+Settlement uses the same coordinator and history owner in both branches. Complete
+results are kept once; unresolved calls receive synthetic interrupted results.
+The terminal branch emits no retry event and never executes pending side effects.
+Later explicit continuation can reuse that valid transcript without replaying the
+failed attempt. Desktop continuous and mobile replayable delivery consume the
+same existing result and error events.
+
 ### User Cancellation
 
 User cancellation is terminal for the current turn and must not trigger automatic

@@ -87,7 +87,11 @@ it.each([
                   yield { type: "tool_input_end", id: CALL_ID };
                 }
                 yield { type: "tool_call", toolCall: modelCall };
-                throw new Error("Model request timed out.");
+                // This direct Model fixture bypasses the adapter's timeout classification.
+                throw Object.assign(new Error("Model request timed out."), {
+                  code: "model_request_timeout",
+                  context: { reason: "timeout", retryable: true },
+                });
               }
               yield { type: "text_delta", text: "done" };
               yield { type: "finish", finishReason: "stop", usage: {} };

@@ -12,6 +12,7 @@ import {
   type TestModelExecutionObservation,
 } from "./test-runtime-model.js";
 import { createTestSessionEventStore } from "./test-event-store.js";
+import { isRetryableStreamRecoveryFailure } from "../src/runtime/methods/streaming-recovery.js";
 
 type ReasoningFailureKind = "idle-timeout" | "network-reset";
 
@@ -147,6 +148,91 @@ describe("AgentRuntime reasoning-only stream recovery", () => {
         discardedToolCallIds: [],
       });
       expect(new Set(reasoningAssistantIds).size).toBe(2);
+    },
+  );
+});
+
+describe("stream recovery admission", () => {
+  it.each([
+    { reason: "rate_limited", code: "model_rate_limited" },
+    { reason: "timeout", code: "model_request_timeout" },
+    { reason: "auth_failed", code: "provider_not_configured" },
+    { reason: "invalid_request", code: "invalid_model_request" },
+  ])("preserves the normalized terminal decision for $reason", ({ reason, code }) => {
+    const error = Object.assign(new Error("stream timed out"), {
+      code,
+      context: { reason, retryable: false },
+      cause: Object.assign(new Error("old transient cause"), { retryable: true }),
+    });
+    expect(isRetryableStreamRecoveryFailure(error)).toBe(false);
+  });
+
+  it("uses the normalized decision rather than an old SDK cause", () => {
+    expect(
+      isRetryableStreamRecoveryFailure(
+        Object.assign(new Error("normalized transient error"), {
+          context: { reason: "network_error", retryable: true },
+          cause: Object.assign(new Error("SDK error"), { retryable: false }),
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["EPIPE", "ERR_STREAM_PREMATURE_CLOSE", "ECONNRESET"])(
+    "accepts structured transport code %s without parsing prose",
+    (code) => {
+      expect(isRetryableStreamRecoveryFailure(Object.assign(new Error("closed"), { code }))).toBe(
+        true,
+      );
+      expect(isRetryableStreamRecoveryFailure(new Error(code))).toBe(false);
+    },
+  );
+
+  it("does not treat timeout prose as a retry contract", () => {
+    expect(isRetryableStreamRecoveryFailure(new Error("invalid timeout configuration"))).toBe(
+      false,
+    );
+  });
+
+  it("does not retry an invalid protocol response because its cause was a transport failure", () => {
+    expect(
+      isRetryableStreamRecoveryFailure(
+        Object.assign(new Error("invalid protocol response"), {
+          code: "invalid_model_response",
+          cause: Object.assign(new Error("connection closed"), { code: "EPIPE" }),
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(["text_delta", "reasoning_delta"] as const)(
+    "ends the turn after terminal rate limiting following %s",
+    async (type) => {
+      const sessionId = createSessionId(`terminal-stream-${type}`);
+      const eventStore = createTestSessionEventStore();
+      let modelCallCount = 0;
+      const runtime = createTestAgentRuntime(
+        sessionId,
+        { mode: "yolo", modelStreaming: "on", titleGeneration: { enabled: false } },
+        {
+          eventStore,
+          modelFactory: createTestModelFactory({
+            async *streamText() {
+              modelCallCount += 1;
+              yield { type, id: "partial", text: "partial output" };
+              throw Object.assign(new Error("quota exhausted after stream timeout"), {
+                code: "model_rate_limited",
+                context: { reason: "rate_limited", retryable: false },
+              });
+            },
+          }),
+        },
+      );
+      await expect(runtime.executeTurn("terminal stream failure")).rejects.toBeDefined();
+      expect(modelCallCount).toBe(1);
+      const events = await eventStore.getEvents(sessionId);
+      expect(events.filter((event) => event.type === SessionEventType.StreamRecoveryRetryStarted))
+        .toHaveLength(0);
     },
   );
 });

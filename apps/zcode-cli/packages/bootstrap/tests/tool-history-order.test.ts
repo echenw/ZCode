@@ -131,7 +131,13 @@ describe("tool order through runtime and SQLite", () => {
               await readStarted.promise;
             }
             firstStreamFinished = true;
-            if (scenario === "stream-failure") throw new Error("Model request timed out.");
+            if (scenario === "stream-failure") {
+              // Model adapters supply this classification; an unknown Error is terminal.
+              throw Object.assign(new Error("Model request timed out."), {
+                code: "model_request_timeout",
+                context: { reason: "timeout", retryable: true },
+              });
+            }
             yield { type: "finish", finishReason: "tool-calls", usage: {} };
             return;
           }

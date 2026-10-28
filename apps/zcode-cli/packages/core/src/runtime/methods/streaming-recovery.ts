@@ -30,6 +30,11 @@ const TRANSIENT_ERROR_CODES = new Set([
   "MODEL_RATE_LIMITED",
   "MODEL_SERVER_ERROR",
   "MODEL_NETWORK_ERROR",
+  "ECONNRESET",
+  "EPIPE",
+  "ERR_STREAM_PREMATURE_CLOSE",
+  "UND_ERR_SOCKET",
+  "ETIMEDOUT",
 ]);
 const TRANSIENT_ERROR_REASONS = new Set([
   "stream_idle_timeout",
@@ -37,6 +42,27 @@ const TRANSIENT_ERROR_REASONS = new Set([
   "server_error",
   "network_error",
   "timeout",
+  "provider_overloaded",
+  "proxy_error",
+  "stale_connection",
+]);
+const TERMINAL_ERROR_REASONS = new Set([
+  "cancelled",
+  "auth_failed",
+  "provider_not_configured",
+  "invalid_request",
+  "context_exceeded",
+  "tls_error",
+]);
+const TERMINAL_ERROR_CODES = new Set([
+  "model_request_cancelled",
+  "invalid_model_request",
+  "invalid_model_response",
+  "provider_not_configured",
+  "provider_not_found",
+  "model_not_found",
+  "model_context_exceeded",
+  "model_request_auth_missing",
 ]);
 
 interface StreamRecoveryAttempt {
@@ -294,21 +320,29 @@ function findStartPlanBusyProviderCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function isRetryableStreamRecoveryFailure(error: unknown): boolean {
+export function isRetryableStreamRecoveryFailure(error: unknown): boolean {
+  let transientFailure = false;
   for (const record of walkErrorRecords(error)) {
-    if (record.retryable === true) return true;
     const context = asRecord(record.context);
-    if (context?.retryable === true) return true;
     const code = stringValue(record.code) ?? stringValue(context?.code);
-    if (code && TRANSIENT_ERROR_CODES.has(code)) return true;
-    const reason = stringValue(record.reason) ?? stringValue(context?.reason);
-    if (reason && TRANSIENT_ERROR_REASONS.has(reason)) return true;
+    const reason = stringValue(context?.reason) ?? stringValue(record.reason);
     const name = stringValue(record.name);
-    if (name === "ModelStreamIdleTimeoutError") return true;
-    const message = stringValue(record.message);
-    if (message && isTransientMessage(message)) return true;
+    if (name === "AbortError" || code === "ABORT_ERR" || reason === "cancelled") return false;
+    if (code && TERMINAL_ERROR_CODES.has(code.toLowerCase())) return false;
+    // adapter 的归一化决策先于通用 code/reason 和内部旧 cause；否则长期额度不足也会
+    // 因 rate_limited 或 message 里的 timeout 被 Core 重新开启最多十次恢复。
+    const retryable =
+      typeof context?.retryable === "boolean" ? context.retryable : record.retryable;
+    if (typeof retryable === "boolean") return retryable;
+    if (reason && TERMINAL_ERROR_REASONS.has(reason)) return false;
+    transientFailure ||= Boolean(
+      (code && TRANSIENT_ERROR_CODES.has(code)) ||
+      (reason && TRANSIENT_ERROR_REASONS.has(reason)) ||
+      name === "ModelStreamIdleTimeoutError" ||
+      name === "TimeoutError",
+    );
   }
-  return false;
+  return transientFailure;
 }
 
 function classifyStreamRecoveryFailure(
@@ -339,12 +373,6 @@ function classifyStreamRecoveryFailure(
     }
   }
   return error instanceof Error ? "provider_stream_error" : "unknown";
-}
-
-function isTransientMessage(message: string): boolean {
-  return /\b(stream idle|stream stalled|timeout|timed out|ECONNRESET|EPIPE|ETIMEDOUT)\b/i.test(
-    message,
-  );
 }
 
 function* walkErrorRecords(error: unknown): Generator<Record<string, unknown>> {

@@ -23,6 +23,7 @@ import {
   emitStreamRecoveryRetryEvents,
   emitStreamRecoveryStarted,
   hasStreamRecoveryBudget,
+  isRetryableStreamRecoveryFailure,
   recoverPartialAssistantOutputFailure,
 } from "./streaming-recovery.js";
 import { executeToolCallsForModelStep } from "./turn-tools.js";
@@ -117,6 +118,20 @@ export function createStreamingToolCoordinator(
     state.turnAbortSignal.removeEventListener("abort", abortOnTurnCancel);
   };
 
+  const settleAcceptedTools = async (
+    assistantCreatedAt: number,
+    providerMetadata: Record<string, unknown>,
+  ) => {
+    if (acceptedToolCalls.size === 0) {
+      abortController.abort();
+      state.turnAbortSignal.removeEventListener("abort", abortOnTurnCancel);
+      return false;
+    }
+    const settlement = await prepareAcceptedToolSettlement();
+    await commitAcceptedToolSettlement(assistantCreatedAt, providerMetadata, settlement);
+    return true;
+  };
+
   return {
     admit: (toolCall: ModelToolCall) => admit(toolCall).call,
     accept(toolCall: ModelToolCall) {
@@ -196,7 +211,13 @@ export function createStreamingToolCoordinator(
       assistantCreatedAt: number,
       recoveryOptions: { failedRequestId?: string } = {},
     ) {
-      if (state.turnAbortSignal.aborted || !hasStreamRecoveryBudget(state)) return false;
+      // 完整 tool_call 只建立结算义务，不授权重试鉴权、额度或协议确定性失败。
+      // 纯文本与工具路径必须读取同一个可重试判定和既有预算。
+      if (
+        state.turnAbortSignal.aborted ||
+        !hasStreamRecoveryBudget(state) ||
+        !isRetryableStreamRecoveryFailure(error)
+      ) return false;
       const recoveryEventOptions = {
         ...options,
         ...(recoveryOptions.failedRequestId
@@ -234,19 +255,12 @@ export function createStreamingToolCoordinator(
       return true;
     },
 
-    async settleForModelFallback(assistantCreatedAt: number) {
-      if (acceptedToolCalls.size === 0) {
-        abortController.abort();
-        state.turnAbortSignal.removeEventListener("abort", abortOnTurnCancel);
-        return false;
-      }
-      const settlement = await prepareAcceptedToolSettlement();
-      await commitAcceptedToolSettlement(
-        assistantCreatedAt,
-        { recoveredFromExecutionModelFallback: true },
-        settlement,
-      );
-      return true;
+    settleForModelFallback(assistantCreatedAt: number) {
+      return settleAcceptedTools(assistantCreatedAt, { recoveredFromExecutionModelFallback: true });
+    },
+
+    settleForModelFailure(assistantCreatedAt: number) {
+      return settleAcceptedTools(assistantCreatedAt, { settledAfterTerminalStreamFailure: true });
     },
   };
 }

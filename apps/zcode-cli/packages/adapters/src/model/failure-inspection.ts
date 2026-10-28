@@ -264,6 +264,9 @@ export function isNetworkFailure(code?: string): boolean {
   const normalized = code?.toUpperCase();
   return (
     normalized === "ECONNRESET" ||
+    // 管道断开和响应体提前关闭也是结构化传输失败；漏掉它们会跳过现有有界 retry。
+    normalized === "EPIPE" ||
+    normalized === "ERR_STREAM_PREMATURE_CLOSE" ||
     normalized === "ECONNREFUSED" ||
     normalized === "EAI_AGAIN" ||
     normalized === "ENOTFOUND" ||

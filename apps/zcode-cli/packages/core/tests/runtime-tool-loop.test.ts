@@ -9957,7 +9957,10 @@ describe("AgentRuntime tool loop", () => {
             await toolCompleted.promise;
             yield { type: "text_delta", text: "partial tail" };
             runtime.setSessionModelSelection(createTestModelSelection(selectedModel));
-            throw new Error("Model request timed out.");
+            throw Object.assign(new Error("Model request timed out."), {
+              code: "model_request_timeout",
+              context: { reason: "timeout", retryable: true },
+            });
           },
         } as never),
       },
@@ -10985,7 +10988,11 @@ describe("AgentRuntime tool loop", () => {
               },
             };
             yield { type: "text_delta", text: "partial write tail" };
-            throw new Error("Turn failed");
+            // 本用例验证可恢复断连的工具结算；无分类的 Turn failed 不代表瞬态故障。
+            throw Object.assign(new Error("Provider stream disconnected"), {
+              code: "model_request_failed",
+              context: { reason: "network_error", retryable: true },
+            });
           },
         } as never),
       },
@@ -11082,7 +11089,11 @@ describe("AgentRuntime tool loop", () => {
               },
             };
             yield { type: "text_delta", text: "partial tail" };
-            throw new Error("Turn failed");
+            // 空工具名由既有 synthetic result 收口，恢复资格仍来自结构化 provider 故障。
+            throw Object.assign(new Error("Provider stream disconnected"), {
+              code: "model_request_failed",
+              context: { reason: "network_error", retryable: true },
+            });
           },
         } as never),
       },
