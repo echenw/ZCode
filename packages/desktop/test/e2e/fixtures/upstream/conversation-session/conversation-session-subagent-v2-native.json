@@ -1,0 +1,803 @@
+{
+  "version": 1,
+  "caseName": "conversation-session-subagent-v2-native",
+  "spec": "./test/e2e/conversation-session/conversation-session-subagent-v2-native.test.ts",
+  "fixtures": [
+    {
+      "id": "v2-native-c-ui-gate",
+      "description": "Synthetic response for direct user resumption of the original grandchild",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_C_UI_RESUME"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_b_spawn_c"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_c_ui_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/c-ui-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/descendants.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/c-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_C_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 c test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-spawn-a",
+      "description": "Synthetic provider response for native V2 root-spawn-a",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_ROOT_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_spawn_a",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "a",
+            "message": "E2E_V2_NATIVE_A_START",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-gate",
+      "description": "Synthetic provider response for native V2 root-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_root_spawn_a"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nnode -e 'require(\"node:fs\").writeFileSync(process.argv[1], String(process.ppid))' '{{e2eRuntimeRoot}}/v2-native/root-pid.txt'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/root-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/root.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/root-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_ROOT_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 root test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-a-spawn-b",
+      "description": "Synthetic provider response for native V2 a-spawn-b",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_A_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_root_spawn_a"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_a_spawn_b",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "b",
+            "message": "E2E_V2_NATIVE_B_START",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-a-gate",
+      "description": "Synthetic provider response for native V2 a-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_a_spawn_b"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_a_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/a-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/descendants.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/a-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_A_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 a test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-a-done-1",
+      "description": "Synthetic provider response for native V2 a-done-1",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_a_gate"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "a-done-1",
+          "text": "E2E_V2_NATIVE_A_DONE_1：这是一段用于验证代理汇报摘要布局的长正文，中英文内容混排时，右侧发件人必须保持完整横排，正文应当正常缩略。：这是一段用于验证代理汇报摘要布局的长正文，中英文内容混排时，右侧发件人必须保持完整横排，正文应当正常缩略。：这是一段用于验证代理汇报摘要布局的长正文，中英文内容混排时，右侧发件人必须保持完整横排，正文应当正常缩略。：这是一段用于验证代理汇报摘要布局的长正文，中英文内容混排时，右侧发件人必须保持完整横排，正文应当正常缩略。：这是一段用于验证代理汇报摘要布局的长正文，中英文内容混排时，右侧发件人必须保持完整横排，正文应当正常缩略。",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-b-spawn-c",
+      "description": "Synthetic provider response for native V2 b-spawn-c",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_B_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_a_spawn_b"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_b_spawn_c",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "c",
+            "message": "E2E_V2_NATIVE_C_START",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-b-gate",
+      "description": "Synthetic provider response for native V2 b-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_b_spawn_c"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_b_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/b-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/descendants.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/b-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_B_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 b test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-b-done-1",
+      "description": "Synthetic provider response for native V2 b-done-1",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_b_gate"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "b-done-1",
+          "text": "E2E_V2_NATIVE_B_DONE_1",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-c-gate",
+      "description": "Synthetic provider response for native V2 c-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_C_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_b_spawn_c"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_c_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/c-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/descendants.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/c-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_C_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 c test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-c-done-1",
+      "description": "Synthetic provider response for native V2 c-done-1",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_c_gate"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "c-done-1",
+          "text": "E2E_V2_NATIVE_C_DONE_1",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-warm-followup",
+      "description": "Synthetic provider response for native V2 root-warm-followup",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_WARM_PARENT"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_warm",
+          "name": "collaboration_followup_task",
+          "input": {
+            "target": "/root/a",
+            "message": "E2E_V2_NATIVE_A_TASK_2"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-warm-accepted",
+      "description": "Synthetic provider response for native V2 root-warm-accepted",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_root_warm"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "root-warm-accepted",
+          "text": "E2E_V2_NATIVE_WARM_ACCEPTED",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-a-done-2",
+      "description": "Synthetic provider response for native V2 a-done-2",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_A_TASK_2"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_root_warm"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "a-done-2",
+          "text": "E2E_V2_NATIVE_A_DONE_2",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-cold-followup",
+      "description": "Synthetic provider response for native V2 root-cold-followup",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_COLD_PARENT"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_cold",
+          "name": "collaboration_followup_task",
+          "input": {
+            "target": "/root/a",
+            "message": "E2E_V2_NATIVE_A_COLD_HOLD"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-cold-accepted",
+      "description": "Synthetic provider response for native V2 root-cold-accepted",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_root_cold"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "root-cold-accepted",
+          "text": "E2E_V2_NATIVE_COLD_ACCEPTED",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-cold-gate",
+      "description": "Synthetic provider response for native V2 cold-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_A_COLD_HOLD"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_root_cold"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_a_cold_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/cold-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/cold.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/cold-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_COLD_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 cold test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-queue-mail",
+      "description": "Synthetic provider response for native V2 root-queue-mail",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_QUEUE_PARENT"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_queue",
+          "name": "collaboration_send_message",
+          "input": {
+            "target": "/root/a",
+            "message": "E2E_V2_NATIVE_COLD_QUEUED_MAIL"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-queue-accepted",
+      "description": "Synthetic provider response for native V2 root-queue-accepted",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_root_queue"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "root-queue-accepted",
+          "text": "E2E_V2_NATIVE_QUEUE_ACCEPTED",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-restored-followup",
+      "description": "Synthetic provider response for native V2 root-restored-followup",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_RESTORED_PARENT"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_root_restored",
+          "name": "collaboration_followup_task",
+          "input": {
+            "target": "/root/a",
+            "message": "E2E_V2_NATIVE_A_TASK_4"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-root-restored-accepted",
+      "description": "Synthetic provider response for native V2 root-restored-accepted",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_root_restored"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "root-restored-accepted",
+          "text": "E2E_V2_NATIVE_RESTORED_ACCEPTED",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-restored-gate",
+      "description": "Synthetic provider response for native V2 restored-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_NATIVE_A_TASK_4"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_native_root_restored"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_native_a_restored_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-native'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-native/restored-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-native/restored.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-native/restored-done.txt'\nprintf 'E2E_V2_NATIVE_BASH_RESTORED_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for the isolated V2 restored test gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-a-done-4",
+      "description": "Synthetic provider response for native V2 a-done-4",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_v2_native_a_restored_gate"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "a-done-4",
+          "text": "E2E_V2_NATIVE_A_DONE_4",
+          "inputTokens": 96,
+          "outputTokens": 16
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,465 @@
+{
+  "version": 1,
+  "caseName": "conversation-session-subagent-v2-a4",
+  "spec": "./test/e2e/conversation-session/conversation-session-subagent-v2-a4.test.ts",
+  "fixtures": [
+    {
+      "id": "v2-a4-b-followup",
+      "description": "Native A4 b-followup",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_B_FOLLOWUP"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": "E2E_V2_A4_B_FOLLOWUP_DONE"
+      }
+    },
+    {
+      "id": "v2-a4-root-done",
+      "description": "Native A4 root-done",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_root_followup",
+          "E2E_V2_A4_ROOT_CHECK"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": "E2E_V2_A4_ROOT_CHECK_DONE"
+      }
+    },
+    {
+      "id": "v2-a4-root-followup",
+      "description": "Native A4 root-followup",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_root_wait",
+          "E2E_V2_A4_ROOT_CHECK"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_a4_root_followup"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_root_followup",
+          "name": "collaboration_followup_task",
+          "input": {
+            "target": "/root/b",
+            "message": "E2E_V2_A4_B_FOLLOWUP"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-root-wait",
+      "description": "Native A4 root-wait",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_root_list",
+          "E2E_V2_A4_ROOT_CHECK"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_a4_root_wait"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_root_wait",
+          "name": "collaboration_wait_agent",
+          "input": {
+            "timeout_ms": 10000
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-root-list",
+      "description": "Native A4 root-list",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_ROOT_CHECK"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_a4_root_list"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_root_list",
+          "name": "collaboration_list_agents",
+          "input": {},
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-a-done",
+      "description": "Native A4 a-done",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_a_gate",
+          "E2E_V2_A4_A_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "E2E_V2_A4_B_FOLLOWUP"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": "E2E_V2_A4_A_DONE"
+      }
+    },
+    {
+      "id": "v2-a4-b-done",
+      "description": "Native A4 b-done",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_b_gate",
+          "E2E_V2_A4_B_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "E2E_V2_A4_B_FOLLOWUP"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": "E2E_V2_A4_B_DONE"
+      }
+    },
+    {
+      "id": "v2-a4-c-done",
+      "description": "Native A4 c-done",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_c_gate",
+          "E2E_V2_A4_C_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "E2E_V2_A4_B_FOLLOWUP"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": "E2E_V2_A4_C_DONE"
+      }
+    },
+    {
+      "id": "v2-a4-a-gate",
+      "description": "Native A4 a-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "toolu_a4_a_spawn_c",
+          "E2E_V2_A4_A_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_a_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-a4'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-a4/a-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-a4/all.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-a4/a-done.txt'\nprintf 'E2E_V2_A4_A_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for isolated A4 gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-a-spawn-c",
+      "description": "Native A4 a-spawn-c",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_A_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "toolu_a4_a_spawn_c"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_a_spawn_c",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "c",
+            "message": "E2E_V2_A4_C_START",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-b-gate",
+      "description": "Native A4 b-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_B_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "E2E_V2_A4_A_START",
+          "toolu_a4_b_gate"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_b_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-a4'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-a4/b-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-a4/all.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-a4/b-done.txt'\nprintf 'E2E_V2_A4_B_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for isolated A4 gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-c-gate",
+      "description": "Native A4 c-gate",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_C_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_START",
+          "E2E_V2_A4_A_START",
+          "toolu_a4_c_gate"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_a4_c_gate",
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p '{{e2eRuntimeRoot}}/v2-a4'\nprintf 'started\\n' >> '{{e2eRuntimeRoot}}/v2-a4/c-started.txt'\nwhile [ ! -f '{{e2eRuntimeRoot}}/v2-a4/all.release' ]; do sleep 0.1; done\nprintf 'done\\n' >> '{{e2eRuntimeRoot}}/v2-a4/c-done.txt'\nprintf 'E2E_V2_A4_C_RELEASED\\n'",
+            "timeout": 600000,
+            "run_in_background": false,
+            "description": "Wait for isolated A4 gate"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-a4-root-launch",
+      "description": "Native A4 root-launch",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": [
+          "E2E_V2_A4_ROOT_START"
+        ],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "E2E_V2_A4_ROOT_CHECK",
+          "toolu_a4_foreground_a"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUses": [
+          {
+            "id": "toolu_a4_foreground_a",
+            "name": "Agent",
+            "input": {
+              "description": "foreground A",
+              "prompt": "E2E_V2_A4_A_START",
+              "subagent_type": "general-purpose",
+              "run_in_background": false
+            },
+            "inputTokens": 64,
+            "outputTokens": 12
+          },
+          {
+            "id": "toolu_a4_background_b",
+            "name": "collaboration_spawn_agent",
+            "input": {
+              "task_name": "b",
+              "message": "E2E_V2_A4_B_START",
+              "fork_turns": "none",
+              "agent_type": "general-purpose"
+            },
+            "inputTokens": 64,
+            "outputTokens": 12
+          }
+        ]
+      }
+    }
+  ]
+}

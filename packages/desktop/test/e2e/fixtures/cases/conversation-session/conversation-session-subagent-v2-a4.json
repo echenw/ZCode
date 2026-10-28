@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "caseName": "conversation-session-subagent-v2-a4",
+  "spec": "./test/e2e/conversation-session/conversation-session-subagent-v2-a4.test.ts",
+  "providerFixtures": [
+    "./test/e2e/fixtures/upstream/common.json",
+    "./test/e2e/fixtures/upstream/conversation-session/conversation-session-subagent-v2-a4.json"
+  ],
+  "fileFixtures": [],
+  "requests": [
+    {
+      "id": "v2-a4-b-followup",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-root-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-root-followup",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-root-wait",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-root-list",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-a-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-b-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-c-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-a-gate",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-a-spawn-c",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-b-gate",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-c-gate",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    },
+    {
+      "id": "v2-a4-root-launch",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash 与 SQLite 执行。门闩仅控制测试顺序，不代表真实模型自主能力。"
+    }
+  ]
+}

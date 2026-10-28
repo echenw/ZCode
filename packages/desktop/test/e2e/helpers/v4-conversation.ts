@@ -80,6 +80,7 @@ import { startDraftFromProject, waitForProjectRow } from "#e2e/helpers/project-s
 
 export const LOGIN_API_KEY = "e2e-login-api-key";
 export const E2E_REPLY_TOKEN = "upstream-e2e-ok";
+const V4_RUNNING_STATUS_ITEM_SELECTOR = "[data-background-task-kind]";
 
 interface PrepareV4ConversationE2EOptions {
   resetDraftBeforeProvider?: boolean;
@@ -1001,7 +1002,7 @@ export async function openV4ComposerRunningBackgroundWorks(timeout = 30000) {
   await browser.waitUntil(
     async () =>
       browser.execute(
-        (panelTestId, itemPrefix) => {
+        (panelTestId, itemSelector) => {
           const panel = document.querySelector<HTMLElement>(`[data-testid="${panelTestId}"]`);
           const terminalCount = Number(panel?.dataset.runningTerminalCount ?? "0");
           const agentCount = Number(panel?.dataset.runningAgentCount ?? "0");
@@ -1013,13 +1014,15 @@ export async function openV4ComposerRunningBackgroundWorks(timeout = 30000) {
           );
           return Boolean(
             panel?.dataset.state === "expanded" &&
+            panel.dataset.displayMode !== "auto" &&
             (terminalCount === 0 || terminalTrigger?.getAttribute("aria-expanded") === "true") &&
             (agentCount === 0 || agentTrigger?.getAttribute("aria-expanded") === "true") &&
-            panel.querySelector(`[data-testid^="${itemPrefix}-"]`),
+            // V2 运行代理没有传统 controlWorkId；展开门禁应检查真实行，取消用例再校验控制 ID。
+            panel.querySelector(itemSelector),
           );
         },
         TID_CHAT_SUMMARY_PANEL,
-        TID_V4_BACKGROUND_WORK_ITEM,
+        V4_RUNNING_STATUS_ITEM_SELECTOR,
       ),
     { timeout, timeoutMsg: "Composer 入口没有直达展开的终端/智能体明细" },
   );
@@ -1030,13 +1033,14 @@ export async function openV4RunningBackgroundWorks(timeout = 30000) {
   await browser.waitUntil(
     async () =>
       browser.execute(
-        (panelTestId, itemPrefix) => {
+        (panelTestId, itemSelector) => {
           const panel = document.querySelector<HTMLElement>(`[data-testid="${panelTestId}"]`);
           if (!panel || Number(panel.dataset.runningBackgroundCount ?? "0") < 1) {
             return false;
           }
-          if (panel.dataset.state === "collapsed") {
-            panel.querySelector<HTMLButtonElement>("button")?.click();
+          // auto 在窄聊天区仍是胶囊，data-state=expanded 并不能证明明细可见；走真实展开入口固定为 panel。
+          if (panel.dataset.state === "collapsed" || panel.dataset.displayMode === "auto") {
+            panel.querySelector<HTMLButtonElement>('[data-status-panel-expand-trigger="true"]')?.click();
             return false;
           }
           const sections = [
@@ -1061,10 +1065,11 @@ export async function openV4RunningBackgroundWorks(timeout = 30000) {
               allOpen = false;
             }
           }
-          return allOpen && Boolean(panel.querySelector(`[data-testid^="${itemPrefix}-"]`));
+          // 运行代理可独立于 legacy background work 呈现，不能用可取消 ID 替代展开事实。
+          return allOpen && Boolean(panel.querySelector(itemSelector));
         },
         TID_CHAT_SUMMARY_PANEL,
-        TID_V4_BACKGROUND_WORK_ITEM,
+        V4_RUNNING_STATUS_ITEM_SELECTOR,
       ),
     { timeout, timeoutMsg: "status panel 没有展开终端/智能体 background work" },
   );
