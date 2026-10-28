@@ -21,7 +21,7 @@ import type { AgentRuntimeInternal } from "../internal.js";
 import type { StreamedToolExecutionResult } from "../types.js";
 import { createRuntimeToolResultEntry } from "../../agent/message-history.js";
 import { recordBrowserTurnToolResult } from "../../repl/browser-turn-state.js";
-import { completedToolPartMetadata, mcpToolPartMetadata } from "./tool-part-metadata.js";
+import { completedToolPartMetadata, registeredToolPartMetadata } from "./tool-part-metadata.js";
 import { projectToolNameForNonEmptyBoundary } from "./tool-part-persistence.js";
 import type { RegularTurnLoopState } from "./turn-loop-state.js";
 import { emitNestedModelUsageEvents } from "./turn-nested-model-usage.js";
@@ -142,6 +142,8 @@ export async function settleToolResults(
                 title: projectedResultToolName.toolName,
                 metadata: {
                   ...completedToolPartMetadata(result),
+                  ...(this.registry.getMetadata(result.toolName)?.multiAgentOperation
+                    ? { multiAgentOperation: this.registry.getMetadata(result.toolName)!.multiAgentOperation } : {}),
                   ...(mediaPersistence
                     ? { modelContentLayout: mediaPersistence.modelContentLayout }
                     : {}),
@@ -159,8 +161,8 @@ export async function settleToolResults(
                 // 修复原因：state.error 面向 UI / 日志，可能比模型实际收到的
                 // modelContent 更笼统；仅附加保存 string 内容供冷恢复精确重放。
                 metadata: {
-                  ...mcpToolPartMetadata(
-                    this.registry.getMetadata(result.toolName)?.mcpPresentation,
+                  ...registeredToolPartMetadata(
+                    this.registry.getMetadata(result.toolName),
                   ),
                   ...(typeof result.modelContent === "string"
                     ? { modelContent: result.modelContent }

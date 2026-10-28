@@ -32,7 +32,8 @@ import type {
   TraceId,
   TurnId,
 } from "@zcode/contracts";
-import { SessionEventType } from "@zcode/contracts";
+import { SESSION_ENTRY_MODEL_SELECTION, SessionEventType } from "@zcode/contracts";
+import { resolveConversationBackingRecord } from "../src/zcode-protocol/server-operations.js";
 import { createConversationV4Gateway } from "../src/zcode-protocol/v4-bridge.js";
 import type {
   ZCodeProtocolAgentServerContext,
@@ -159,8 +160,11 @@ function makeBackingRecord(eventStore: SessionEventStorePort): ZCodeProtocolSess
   return {
     app: {
       readToolResultArtifact: async () => ({ content: "" }),
+      getModelOption: (selection: { modelId: string }) => ({
+        contextWindow: selection.modelId === "glm-4-air" ? 960_000 : 200_000,
+      }),
       runtime: {
-        getSessionModelSelection: () => ({ providerId: "glm", modelId: "glm-4-air" }),
+        getSessionModelSelection: () => ({ providerId: "glm", modelId: "parent-model" }),
         // listSessionSubagents 只在会话**自身**有 record 时读它（subagent 投影的 live 补充）；
         // 这里没有 subagent，返回空投影即可。
         // readSessionContextUsage（staging 6d4c3cc571 起在 loadPersistedEvents 里同步读容量种子）要读
@@ -274,6 +278,106 @@ describe("v4 detached live child 的首次订阅 hydration", () => {
       time: { created: 1, updated: 4 },
     });
   }
+
+  it("grandchild reads the original ancestor store without creating a second runtime", async () => {
+    await createSessionRow(PARENT_SESSION_ID);
+    await createSessionRow(CHILD_SESSION_ID, PARENT_SESSION_ID);
+    const grandchild = "sess_grandchild" as SessionId;
+    await createSessionRow(grandchild, CHILD_SESSION_ID);
+    const record = makeBackingRecord(createInMemorySessionEventStore());
+    const sessions = new Map([[PARENT_SESSION_ID, record]]);
+    const context = makeContext({ sessions, store });
+    expect(await resolveConversationBackingRecord(context, grandchild)).toBe(record);
+    expect(sessions.size).toBe(1);
+    expect(await resolveConversationBackingRecord(context, "missing-session")).toBeUndefined();
+  });
+
+  it.each([
+    { clientMode: "desktop-continuous", keepUsageEvent: true },
+    { clientMode: "web-remote-replayable", keepUsageEvent: true },
+    { clientMode: "desktop-continuous", keepUsageEvent: false },
+  ] as const)(
+    "$clientMode / memory usage=$keepUsageEvent：首次打开已完成 child 保留自己的用量与容量",
+    async ({ clientMode, keepUsageEvent }) => {
+      await createSessionRow(PARENT_SESSION_ID);
+      await createSessionRow(CHILD_SESSION_ID, PARENT_SESSION_ID);
+      await seedActorTranscriptPrefix(store, CHILD_SESSION_ID, "completed");
+      const turnId = `${CHILD_SESSION_ID}-completed`;
+      const usage = {
+        inputTokens: 1000,
+        outputTokens: 100,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      for (const message of await store.messages({ sessionID: CHILD_SESSION_ID })) {
+        await store.saveMessage({
+          ...message.info,
+          anchor: { turnId: turnId as TurnId },
+          ...(message.info.role === "assistant"
+            ? { tokens: { input: 1000, output: 100, reasoning: 0, cache: { read: 0, write: 0 } } }
+            : {}),
+        });
+      }
+      await store.saveSessionEntry({
+        id: "child-model",
+        sessionID: CHILD_SESSION_ID,
+        type: SESSION_ENTRY_MODEL_SELECTION,
+        time: { created: 1, updated: 1 },
+        data: { providerId: "glm", modelId: "glm-4-air" },
+      });
+      const eventStore = createInMemorySessionEventStore();
+      const sessions = new Map([[PARENT_SESSION_ID, makeBackingRecord(eventStore)]]);
+      const context = makeContext({ sessions, store });
+      const gateway = createConversationV4Gateway(context);
+      context.v4Gateway = gateway;
+      const log = new EventLog(CHILD_SESSION_ID);
+      for (const event of [
+        log.push(SessionEventType.SessionCreated, { mode: "build", contextWindow: 960_000 }),
+        log.push(SessionEventType.TurnStarted, { turnNumber: 1, input: "completed" }, { turnId }),
+        log.push(
+          SessionEventType.ModelComplete,
+          {
+            content: "completed",
+            stopReason: "end_turn",
+            querySource: "subagent",
+            contextWindow: 960_000,
+            usage,
+            toolCallCount: 0,
+          },
+          { turnId },
+        ),
+        log.push(
+          SessionEventType.TurnComplete,
+          {
+            response: "completed",
+            turnNumber: 1,
+            historyRoundCount: 1,
+            toolCallCount: 0,
+            durationMs: 1,
+            resultType: "success",
+            usage,
+          },
+          { turnId },
+        ),
+      ]) {
+        if (!keepUsageEvent && event.type === SessionEventType.ModelComplete) continue;
+        await eventStore.append(event);
+        gateway.ingestDetachedLiveSession(CHILD_SESSION_ID, event);
+      }
+      const result = await gateway.subscribe({
+        topic: conversationTopic(CHILD_SESSION_ID),
+        connectionId: "completed-child",
+        clientMode,
+      });
+      const payload = result.initialFrame?.payload;
+      if (payload?.kind !== "snapshot") throw new Error("Expected snapshot initial frame");
+      expect(payload.snapshot.usage.contextWindow).toMatchObject({
+        usedTokens: 1100,
+        maxTokens: 960_000,
+      });
+      expect(sessions.has(CHILD_SESSION_ID)).toBe(false);
+    },
+  );
 
   it("child 无 record：经持久 parentID 落到父 record，播种前缀与 live 增量同时可见", async () => {
     await createSessionRow(PARENT_SESSION_ID);

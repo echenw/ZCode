@@ -1,9 +1,9 @@
 import React from "react";
 import type { TuiCopy } from "@zcode/i18n";
-import { ContentPane } from "./app-transcript-components.js";
-import { palette } from "./app-model.js";
-import { truncateDisplay } from "./app-terminal-width.js";
-import type { SubagentsController } from "./app-subagents.js";
+import { ContentPane } from "../app-transcript-components.js";
+import { palette } from "../app-model.js";
+import { truncateDisplay } from "../app-terminal-width.js";
+import type { SubagentsController } from "../app-subagents.js";
 
 const h = React.createElement;
 
@@ -21,6 +21,11 @@ export function SubagentView({
   const labels = copy.sidebar.subagents;
   const selected = controller.selected!;
   const transcript = controller.transcript;
+  const modelAndUsage = [
+    ...(selected.modelId ? [`${selected.providerId ? `${selected.providerId}/` : ""}${selected.modelId}`] : []),
+    ...(selected.reasoningEffort ? [selected.reasoningEffort] : []),
+    ...(selected.totalTokens !== undefined ? [`${selected.totalTokens.toLocaleString()} tokens`] : []),
+  ];
   const messages = transcript?.liveModelText
     ? [
         ...transcript.messages,
@@ -49,6 +54,13 @@ export function SubagentView({
       { style: { fg: palette.text, height: 1, flexShrink: 0 } },
       truncateDisplay(`${selected.title} · ${labels.status[selected.status]}`, contentWidth),
     ),
+    selected.agentPath
+      ? h("text", { id: "subagent-identity", style: { fg: palette.muted, flexShrink: 0 } },
+          selected.parentAgentPath ? `${selected.parentAgentPath} → ${selected.agentPath}` : selected.agentPath)
+      : null,
+    modelAndUsage.length > 0
+      ? h("text", { id: "subagent-model-usage", style: { fg: palette.muted, flexShrink: 0 } }, modelAndUsage.join(" · "))
+      : null,
     h("text", { style: { fg: palette.muted, height: 1, flexShrink: 0 } }, labels.readonly),
     pendingMain
       ? h(

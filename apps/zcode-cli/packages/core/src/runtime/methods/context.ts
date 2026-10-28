@@ -124,9 +124,20 @@ export function createContextBuilderFromSnapshot(
     // 执行模型属于 model step，不写回可复用的 Context Source。
     this.config.envInfo = envInfo;
   }
+  const multiAgent = this.config.multiAgentV2?.enabled && this.config.multiAgentIdentity ? {
+    ...this.config.multiAgentIdentity,
+    toolNamespace: this.config.multiAgentV2.toolNamespace ?? "collaboration",
+    delegationMode: this.config.multiAgentV2.delegationMode ?? "explicit" as const,
+    rootAgentUsageHintText: this.config.multiAgentV2.rootAgentUsageHintText,
+    subagentUsageHintText: this.config.multiAgentV2.subagentUsageHintText,
+    multiAgentModeHintText: this.config.multiAgentV2.multiAgentModeHintText,
+  } : undefined;
   if (this.config.subagentContext) {
     return createSubagentContextBuilder({
       agentPrompt: this.config.subagentContext.agentPrompt,
+      developerInstructions: this.config.subagentContext.developerInstructions,
+      multiAgent,
+      guidanceToolNames: this.getTools(options.model).map((tool) => tool.name),
       currentDate: snapshot.currentDate,
       envInfo,
       model: options.model,
@@ -137,6 +148,7 @@ export function createContextBuilderFromSnapshot(
   }
 
   const contextConfig: ContextBuilderConfig = {
+    multiAgent,
     workingDirectory: snapshot.workingDirectory,
     additionalDirectories: this.config.additionalDirectories,
     envInfo,

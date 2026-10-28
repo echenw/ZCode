@@ -16,6 +16,7 @@ import type { SendInputOptions } from "../app/types.js";
 import { repairPersistedRemoteSessionPaths, type TurnAttachment } from "@zcode/core";
 import {
   CoreErrorType,
+  EventReducer,
   SESSION_ENTRY_TARGET_COMPLETION_VERIFICATION,
   createMessageId,
   createPartId,
@@ -35,6 +36,7 @@ import {
   type SessionEvent,
   SessionEventType,
   type SessionId,
+  type SessionStorePort,
   type SessionInfo,
   type SessionTaskType,
   type CollaborationMode,
@@ -126,9 +128,8 @@ import { mapComputerUseOperationEvent } from "./computer-use-operation-event.js"
 import { protocolMcpServersToRuntimeMcpConfig } from "./protocol-mcp-config.js";
 import { projectIdFromDirectory } from "../app/paths.js";
 import {
-  collectSubagentChildSessionIds,
   paginateEndedSubagents,
-  projectSessionSubagents,
+  readSubagentTree,
 } from "./subagent-session-query.js";
 import { runSessionModelConfigMutation } from "../zcode-protocol-v4/model-config-mutation.js";
 import { runWithSessionResidencyFinalization } from "./session-residency.js";
@@ -1761,6 +1762,25 @@ export async function listSessions(context: ZCodeProtocolAgentServerContext, raw
   return { sessions };
 }
 
+/** 子会话仅借祖先的共享读取能力，不能为只读详情启动第二个 runtime。 */
+export async function resolveConversationBackingRecord(context: ZCodeProtocolAgentServerContext, sessionId: string): Promise<ZCodeProtocolSessionRecord | undefined> {
+  const direct = context.sessions.get(sessionId);
+  if (direct) return direct;
+  const visited = new Set<string>();
+  let current: string | undefined = sessionId;
+  let projectId: string | undefined;
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    const stored: Awaited<ReturnType<SessionStorePort["getSession"]>> | undefined = await context.deps.sessionStore?.getSession(current as SessionId);
+    if (!stored || stored.time.deleted !== undefined || (projectId && stored.projectID !== projectId)) return undefined;
+    projectId ??= stored.projectID;
+    const record = context.sessions.get(current);
+    if (record) return record;
+    current = stored.parentID;
+  }
+  return undefined;
+}
+
 export async function listSessionSubagents(
   context: ZCodeProtocolAgentServerContext,
   rawParams: unknown,
@@ -1795,48 +1815,19 @@ export async function listSessionSubagents(
       `Session not found: ${params.sessionId}`,
     );
   }
-  const messages = persistedMessages ?? (await store.messages({ sessionID: parentSession.id }));
-  const parentEvents = liveParent
-    ? await liveParent.eventStore.getEvents(parentSession.id).catch(() => [])
-    : [];
-  const childSessionIds = collectSubagentChildSessionIds(parentSession, messages, parentEvents);
-  const childEntries = await Promise.all(
-    childSessionIds.map(async (childSessionId) => {
-      const childSession = await store.getSession(childSessionId as SessionId);
-      if (!childSession || childSession.taskType !== "subagent_child") return null;
-      const childMessages = await store.messages({
-        sessionID: childSession.id,
-      });
-      const liveChild = context.sessions.get(childSessionId);
-      const childProjection = liveChild
-        ? await liveChild.app.runtime.getProjection().catch(() => undefined)
-        : undefined;
-      return { childMessages, childProjection, childSession, childSessionId };
-    }),
-  );
-  const persistedChildren = childEntries.filter(
-    (entry): entry is NonNullable<typeof entry> => entry !== null,
-  );
-  const parentProjection = liveParent
-    ? await liveParent.app.runtime.getProjection().catch(() => undefined)
-    : undefined;
-  const projection = projectSessionSubagents({
+  const { projection, childSessionIds } = await readSubagentTree({
+    rootSession: parentSession,
+    rootMessages: persistedMessages,
     revision: liveParent?.stateRevision ?? parentSession.time.updated,
-    parentSession,
-    messages,
-    childSessionsById: new Map(
-      persistedChildren.map((entry) => [entry.childSessionId, entry.childSession]),
-    ),
-    childMessagesById: new Map(
-      persistedChildren.map((entry) => [entry.childSessionId, entry.childMessages]),
-    ),
-    childProjectionsById: new Map(
-      persistedChildren.flatMap((entry) =>
-        entry.childProjection ? [[entry.childSessionId, entry.childProjection]] : [],
-      ),
-    ),
-    ...(parentProjection ? { parentProjection } : {}),
-    ...(parentEvents.length > 0 ? { parentEvents } : {}),
+    store,
+    readEvents: async (id) => {
+      const live = context.sessions.get(id) ?? await resolveConversationBackingRecord(context, id);
+      return live ? live.eventStore.getEvents(id).catch(() => []) : [];
+    },
+    readProjection: async (id) => {
+      const live = context.sessions.get(id);
+      return live ? live.app.runtime.getProjection().catch(() => undefined) : undefined;
+    },
   });
   const ended = paginateEndedSubagents(projection.ended, {
     cursor: params.endedCursor,
@@ -1844,7 +1835,7 @@ export async function listSessionSubagents(
   });
   return {
     revision: projection.revision,
-    childSessionIds: persistedChildren.map((entry) => entry.childSessionId),
+    childSessionIds,
     running: projection.running,
     ended: {
       total: projection.ended.length,
@@ -1933,18 +1924,21 @@ export async function readSessionContextUsage(
   context: ZCodeProtocolAgentServerContext,
   sessionId: string,
   persistedMessages?: MessageWithParts[],
+  detachedSource?: { events: SessionEvent[]; contextWindow: number | undefined },
 ) {
   const record = context.sessions.get(sessionId);
-  if (!record) return undefined;
+  if (!record && !detachedSource) return undefined;
   const [resolvedPersistedMessages, session, events] = await Promise.all([
-    persistedMessages ?? readSessionMessages(context, record),
+    persistedMessages ?? (record ? readSessionMessages(context, record) : []),
     getPersistedSession(context, sessionId),
-    record.eventStore.getEvents(sessionId as SessionId),
+    record ? record.eventStore.getEvents(sessionId as SessionId) : (detachedSource?.events ?? []),
   ]);
   // 保持 legacy buildSessionSnapshot 的取数顺序：先固定持久事实，再读取 runtime
   // projection。运行中首订阅若恰逢 ModelComplete/rewind，不能因窄读把 projection
   // 提前到并行阶段而制造新的跨水位组合。
-  const projection = await record.app.runtime.getProjection();
+  const projection = record
+    ? await record.app.runtime.getProjection()
+    : new EventReducer().reduce(events);
   const messages = projectActiveSessionMessages(
     resolvedPersistedMessages,
     session,
@@ -1953,7 +1947,12 @@ export async function readSessionContextUsage(
   return resolveSessionContextUsage({
     messages,
     persistedContextUsageBreakdownEvents: events,
-    projection,
+    // detached child 没有 bootstrap record；用自己的事件/转录恢复，不能借父 projection，
+    // 也不能因缺 record 跳过 usage seed，让合成的零用量覆盖真实水位。
+    projection:
+      !record && detachedSource
+        ? { ...projection, contextWindow: detachedSource.contextWindow ?? 0 }
+        : projection,
   });
 }
 
@@ -2780,7 +2779,17 @@ export async function cancelBackgroundTask(
     );
   }
 
-  const result = await record.app.cancelBackgroundTask(params.taskId);
+  const controller = record.activeAbortController;
+  const result = params.scope === undefined
+    ? await record.app.cancelBackgroundTask(params.taskId)
+    : await record.app.cancelBackgroundTask(params.taskId, { scope: params.scope });
+  // 只取消本次准入时的 Root controller，不能误杀等待文件结算期间开始的新一轮。
+  if (params.scope === "tree" && result.scope === "tree" && result.tasks !== undefined) {
+    controller?.abort(new Error("Explicit multi-agent tree stop"));
+  }
+  if (params.scope && params.scope !== "task" && !result.reason && result.scope !== params.scope) {
+    throw new ProtocolRequestError(-32031, "Scoped background cancellation is not supported by this runtime");
+  }
   // 后台 bash 取消是运行态变更，不会经过普通 prompt 终态。
   // 取消后立即发 state.updated，让桌面 continuous 和手机 replayable 都通过各自 snapshot 边界刷新投影。
   await afterStateMutation(context, record, "background_task_cancelled");

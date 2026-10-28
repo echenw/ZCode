@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { withPersistedSubagentIdentities, readPersistedAgentNames } from "../app/session-store.js";
 import {
   createSessionId,
   SessionEventType,
@@ -8,6 +9,8 @@ import {
   type SessionEvent,
   type SessionInfo,
   type SessionProjection,
+  type SessionId,
+  type SessionStorePort,
   type ToolPart,
   STREAM_RECOVERY_DISCARDED_ERROR_NAME,
 } from "@zcode/contracts";
@@ -17,26 +20,40 @@ const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task", "subagent"]);
 const CANCELLATION_PATTERN = /abort|cancel|interrupt|stop/i;
 
 interface SubagentCandidate {
+  nickname?: string;
+  model?: string;
+  reasoningEffort?: string;
   agentId?: string;
+  agentPath?: string;
+  parentAgentPath?: string;
+  rootSessionId?: string;
   childSessionId: string;
   runInBackground: boolean;
+  executionRunning?: boolean;
   output: Record<string, unknown> | null;
   part: ToolPart;
   subagentType: string;
   summary?: string;
   startedAt?: number;
   stoppedAt?: number;
-  stoppedStatus?: "success" | "failed" | "cancelled";
+  stoppedStatus?: "success" | "failed" | "cancelled" | "lost";
   title: string;
 }
 
 interface SubagentEventRelation {
+  executionRunning?: boolean;
+  nickname?: string;
+  model?: string;
+  reasoningEffort?: string;
   agentId?: string;
+  agentPath?: string;
+  parentAgentPath?: string;
+  rootSessionId?: string;
   childSessionId?: string;
   description?: string;
   startedAt?: number;
   stoppedAt?: number;
-  stoppedStatus?: "success" | "failed" | "cancelled";
+  stoppedStatus?: "success" | "failed" | "cancelled" | "lost";
   subagentType?: string;
   summary?: string;
 }
@@ -118,10 +135,21 @@ function subagentEventRelations(
       relations.set(parentToolCallId, {
         ...current,
         agentId: stringField(payload, "agentId") ?? current.agentId,
+        nickname: stringField(payload, "nickname") ?? current.nickname,
+        agentPath: stringField(payload, "agentPath") ?? current.agentPath,
+        parentAgentPath: stringField(payload, "parentAgentPath") ?? current.parentAgentPath,
+        rootSessionId: stringField(payload, "rootSessionId") ?? current.rootSessionId,
+        model: stringField(payload, "model") ?? current.model,
+        reasoningEffort: stringField(payload, "reasoningEffort"),
         childSessionId: stringField(payload, "childSessionId") ?? current.childSessionId,
         description: stringField(payload, "description", "prompt") ?? current.description,
         startedAt: event.timestamp.getTime(),
         subagentType: stringField(payload, "agentType") ?? current.subagentType,
+        // 原身份的新一轮 spawn/readiness 取代旧轮终态，不能把首次完成带入 followup。
+        stoppedAt: undefined,
+        executionRunning: true,
+        stoppedStatus: undefined,
+        summary: undefined,
       });
       continue;
     }
@@ -130,6 +158,7 @@ function subagentEventRelations(
       ...current,
       agentId: stringField(payload, "agentId") ?? current.agentId,
       childSessionId: stringField(payload, "childSessionId") ?? current.childSessionId,
+      executionRunning: false,
       stoppedAt: event.timestamp.getTime(),
       stoppedStatus:
         status === "cancelled" || status === "stopped"
@@ -160,13 +189,21 @@ function candidateFromToolPart(
   part: ToolPart,
   relation?: SubagentEventRelation,
 ): SubagentCandidate | null {
-  if (!SUBAGENT_TOOL_NAMES.has(part.tool)) return null;
+
   const completedOutput =
     part.state.status === "completed" ? nonEmptyString(part.state.output) : undefined;
   const output = parseJsonObject(completedOutput);
   const input = asRecord(part.state.input);
   const stateMetadata = "metadata" in part.state ? asRecord(part.state.metadata) : {};
   const metadata = { ...asRecord(part.metadata), ...stateMetadata };
+  const v2Spawn = metadata.multiAgentOperation === "spawn_agent" || relation?.agentPath !== undefined ||
+    ((typeof metadata.childSessionId === "string" || relation?.childSessionId !== undefined) && typeof output?.task_name === "string" && output.task_name.startsWith("/root/")) ||
+    // Published V2 histories used explicit identities in the tool result before canonical metadata existed.
+    (typeof output?.agentPath === "string" && typeof output?.childSessionId === "string");
+  if (!SUBAGENT_TOOL_NAMES.has(part.tool) && !v2Spawn) return null;
+  const lifecycle = asRecord(metadata.subagentLifecycle);
+  const storedStatus = ["success", "failed", "cancelled", "lost"].includes(String(lifecycle.status))
+    ? lifecycle.status as SubagentCandidate["stoppedStatus"] : undefined;
   const agentId =
     stringField(output ?? {}, "agentId") ??
     // 后台 Agent 的持久化 launch ACK 是纯文本，cold query 未携带
@@ -183,14 +220,21 @@ function candidateFromToolPart(
   if (!childSessionId) return null;
   const title =
     stringField(output ?? {}, "description") ??
-    stringField(input, "description") ??
     stringField(metadata, "description") ??
+    stringField(input, "description", "task_name") ??
     relation?.description ??
     stringField(input, "prompt") ??
     "Subagent";
   return {
     childSessionId,
-    runInBackground: input.run_in_background === true,
+    nickname: stringField(output ?? {}, "nickname") ?? stringField(metadata, "nickname") ?? relation?.nickname,
+    model: stringField(output ?? {}, "model") ?? stringField(metadata, "model") ?? relation?.model,
+    reasoningEffort: stringField(output ?? {}, "reasoningEffort") ?? stringField(metadata, "reasoningEffort") ?? relation?.reasoningEffort,
+    runInBackground: v2Spawn || input.run_in_background === true,
+    ...(v2Spawn && relation?.executionRunning !== undefined ? { executionRunning: relation.executionRunning } : {}),
+    agentPath: stringField(output ?? {}, "agentPath", "task_name") ?? stringField(metadata, "agentPath") ?? relation?.agentPath,
+    parentAgentPath: stringField(output ?? {}, "parentAgentPath") ?? stringField(metadata, "parentAgentPath") ?? relation?.parentAgentPath,
+    rootSessionId: stringField(output ?? {}, "rootSessionId") ?? stringField(metadata, "rootSessionId") ?? relation?.rootSessionId,
     part,
     output,
     agentId: agentId ?? part.callID,
@@ -198,7 +242,7 @@ function candidateFromToolPart(
       stringField(output ?? {}, "agentType") ??
       stringField(metadata, "agentType") ??
       relation?.subagentType ??
-      stringField(input, "subagent_type", "agent", "agentType") ??
+      stringField(input, "subagent_type", "agent_type", "agent", "agentType") ??
       "subagent",
     title,
     summary:
@@ -206,6 +250,9 @@ function candidateFromToolPart(
       stringField(output ?? {}, "result", "summary") ??
       (part.state.status === "error" ? nonEmptyString(part.state.error) : undefined) ??
       relation?.summary,
+    ...(typeof lifecycle.startedAt === "number" ? { startedAt: lifecycle.startedAt } : {}),
+    ...(typeof lifecycle.stoppedAt === "number" ? { stoppedAt: lifecycle.stoppedAt } : {}),
+    ...(storedStatus && !relation ? { stoppedStatus: storedStatus } : {}),
     ...(relation?.startedAt !== undefined ? { startedAt: relation.startedAt } : {}),
     ...(relation?.stoppedAt !== undefined ? { stoppedAt: relation.stoppedAt } : {}),
     ...(relation?.stoppedStatus ? { stoppedStatus: relation.stoppedStatus } : {}),
@@ -299,17 +346,24 @@ function runningStatus(input: {
   if (input.background?.status === "running") {
     return input.background.blocked ? "blocked" : "running";
   }
+  // 明确停止由任务 Owner 先结算；模型的旧 TurnStarted 可能要等在飞请求退出才更新。
+  // 真实终态优先，不能继续把已中断的执行展示为 running。
+  if (terminalBackgroundStatus(input.background) || input.candidate.stoppedStatus) return undefined;
+  // child 的最终模型轮先于 Runner 产物/邮箱结算；只有执行器 stop 才能收口该执行。
+  if (input.candidate.executionRunning) return input.childProjection?.status === "waiting" ? "waiting" : "running";
   if (input.childProjection?.status === "waiting") return "waiting";
   if (input.childProjection?.status === "running") return "running";
   // async Agent 的父 tool part 在 launch ACK 后立即标成 completed，
   // partial parent projection 又可能暂时不带仍运行的 background task。此时仅按
   // tool part 会把 child 误判为 ended，并在 cold seed 时清空 V4 running 行。
-  // child 还没有终态输出、spawn relation 也没有 stop 时，background input 本身
-  // 是可恢复的 running 事实；真实终态仍由 background/child projection/outcome 优先。
+  // child 初始化可能已产生 idle projection，但尚未进入首个 TurnStarted；不能把
+  // launch ACK 的 completed 当作任务成功。没有终态输出或 stop relation 时，
+  // background input 仍是 running 事实；真实终态由 background/child projection/outcome 优先。
   if (
     input.candidate.runInBackground &&
     input.background === undefined &&
-    input.childProjection === undefined &&
+    (input.childProjection === undefined ||
+      (input.childProjection.status === "idle" && input.childProjection.turnCount === 0)) &&
     input.candidate.stoppedStatus === undefined &&
     input.childOutcome.status === undefined
   ) {
@@ -358,12 +412,12 @@ function endedStatus(input: {
 }): ZCodeSessionEndedSubagent["status"] {
   const backgroundStatus = terminalBackgroundStatus(input.background);
   if (backgroundStatus) return backgroundStatus;
+  if (input.candidate.stoppedStatus) return input.candidate.stoppedStatus;
   if (input.childProjection?.status === "error") return "failed";
   if (input.childProjection?.status === "completed") return "success";
   if (input.candidate.part.state.status === "error") {
     return CANCELLATION_PATTERN.test(input.candidate.part.state.error) ? "cancelled" : "failed";
   }
-  if (input.candidate.stoppedStatus) return input.candidate.stoppedStatus;
   const outputStatus = stringField(input.candidate.output ?? {}, "status");
   if (outputStatus === "cancelled" || outputStatus === "stopped") return "cancelled";
   if (outputStatus === "failed" || outputStatus === "error") return "failed";
@@ -393,6 +447,9 @@ export function projectSessionSubagents(
   )) {
     const childSession = input.childSessionsById.get(candidate.childSessionId);
     if (!childSession || childSession.taskType !== "subagent_child") continue;
+    // 工具输出不是成员资格证明：持久父关系和项目边界必须一致。
+    if (childSession.projectID !== input.parentSession.projectID ||
+        (childSession.parentID !== undefined && childSession.parentID !== input.parentSession.id)) continue;
     const childProjection = input.childProjectionsById.get(candidate.childSessionId);
     const background = findBackgroundTask(input.parentProjection, candidate);
     const childOutcome = lastChildOutcome(input.childMessagesById.get(candidate.childSessionId));
@@ -403,12 +460,33 @@ export function projectSessionSubagents(
       childProjection,
       parentProjection: input.parentProjection,
     });
+    const lastAssistant = input.childMessagesById.get(candidate.childSessionId)
+      ?.filter((message) => message.info.role === "assistant").at(-1)?.info;
+    const modelSeparator = candidate.model?.indexOf("/") ?? -1;
+    // 冷目录读取真实 assistant 的执行选择；首请求前只使用已持久化的派发元数据，不猜默认档位。
+    const modelMetadata = lastAssistant?.role === "assistant"
+      ? { modelId: lastAssistant.modelId, providerId: lastAssistant.providerId, reasoningEffort: lastAssistant.reasoningLevel }
+      : {
+          ...(candidate.model && modelSeparator > 0 ? {
+            providerId: candidate.model.slice(0, modelSeparator),
+            modelId: candidate.model.slice(modelSeparator + 1),
+          } : {}),
+          ...(candidate.reasoningEffort ? { reasoningEffort: candidate.reasoningEffort } : {}),
+        };
     const common = {
+      ...(candidate.agentPath ? {
+        agentPath: candidate.agentPath,
+        parentSessionId: childSession.parentID ?? input.parentSession.id,
+        ...(candidate.parentAgentPath ? { parentAgentPath: candidate.parentAgentPath } : {}),
+        ...(candidate.rootSessionId ? { rootSessionId: candidate.rootSessionId } : {}),
+      } : {}),
+      ...modelMetadata,
+      ...(childProjection ? { totalTokens: childProjection.totalTokenCount } : {}),
       childSessionId: candidate.childSessionId,
       ...(candidate.agentId ? { agentId: candidate.agentId } : {}),
       toolCallId: candidate.part.callID,
       subagentType: candidate.subagentType,
-      title: candidate.title,
+      title: candidate.nickname ? `${candidate.nickname} · ${candidate.title}` : candidate.title,
       ...(startedAt(candidate, background) !== undefined
         ? { startedAt: startedAt(candidate, background) }
         : {}),
@@ -491,4 +569,71 @@ export function paginateEndedSubagents(
     items,
     ...(last && start + items.length < ended.length ? { nextCursor: encodeCursor(last) } : {}),
   };
+}
+
+
+/** 两种客户端共享持久父关系读取；这里只构造投影，不保留另一个可变树或任务队列。 */
+export async function readSubagentTree(input: {
+  rootSession: SessionInfo;
+  rootMessages?: readonly MessageWithParts[];
+  revision: number;
+  store: Pick<SessionStorePort, "getSession" | "messages" | "sessionEntries">;
+  readEvents: (sessionId: SessionId) => Promise<readonly SessionEvent[]>;
+  readProjection: (sessionId: SessionId) => Promise<SessionProjection | undefined>;
+}): Promise<{ projection: SessionSubagentProjection; childSessionIds: string[] }> {
+  const queue = [input.rootSession];
+  const visited = new Set<string>([input.rootSession.id]);
+  const childSessionIds: string[] = [];
+  const running: ZCodeSessionRunningSubagent[] = [];
+  const ended: ZCodeSessionEndedSubagent[] = [];
+  for (let index = 0; index < queue.length; index += 1) {
+    const parent = queue[index]!;
+    const [rawMessages, parentEvents, parentProjection] = await Promise.all([
+      parent.id === input.rootSession.id && input.rootMessages
+        ? Promise.resolve(input.rootMessages)
+        : input.store.messages({ sessionID: parent.id }),
+      input.readEvents(parent.id),
+      input.readProjection(parent.id),
+    ]);
+    const messages = await withPersistedSubagentIdentities({ sessionId: parent.id,
+      messages: activeBranchMessages(parent, rawMessages), store: input.store });
+    const children = [];
+    for (const id of collectSubagentChildSessionIds(parent, messages, parentEvents)) {
+      if (visited.has(id)) continue;
+      const child = await input.store.getSession(id as SessionId);
+      if (!child || child.taskType !== "subagent_child" ||
+          child.projectID !== input.rootSession.projectID ||
+          (child.parentID !== undefined && child.parentID !== parent.id)) continue;
+      visited.add(id);
+      childSessionIds.push(id);
+      queue.push(child);
+      const [childMessages, childProjection] = await Promise.all([
+        input.store.messages({ sessionID: child.id }),
+        input.readProjection(child.id),
+      ]);
+      children.push({ child, childMessages, childProjection });
+    }
+    const projection = projectSessionSubagents({
+      revision: input.revision,
+      parentSession: parent,
+      messages,
+      parentEvents,
+      parentProjection,
+      childSessionsById: new Map(children.map(({ child }) => [child.id, child])),
+      childMessagesById: new Map(children.map(({ child, childMessages }) => [child.id, childMessages])),
+      childProjectionsById: new Map(children.flatMap(({ child, childProjection }) =>
+        childProjection ? [[child.id, childProjection] as const] : [])),
+    });
+    running.push(...projection.running);
+    ended.push(...projection.ended);
+  }
+  ended.sort((left, right) =>
+    (right.endedAt ?? 0) - (left.endedAt ?? 0) ||
+    right.childSessionId.localeCompare(left.childSessionId));
+  const names = await readPersistedAgentNames(input.store, input.rootSession.id);
+  for (const item of [...running, ...ended]) {
+    const name = names[item.childSessionId];
+    if (name && !item.title.startsWith(`${name} · `)) item.title = `${name} · ${item.title}`;
+  }
+  return { projection: { revision: input.revision, running, ended }, childSessionIds };
 }

@@ -1,11 +1,18 @@
 import type {
   ModelUsage,
+  ModelUsageSummary,
+  MultiAgentIdentity,
+  SubagentSendMessageRequest,
+  SubagentRunOptions,
+  SubagentRunRequest,
+  SubagentSendMessageResult,
   SessionId,
   SubagentTaskSnapshot,
   TraceContext,
   TurnId,
 } from "@zcode/contracts";
 import type { AgentOutput } from "@zcode/contracts";
+import { allocateMultiAgentNicknames } from "@zcode/contracts";
 
 // local_dynamic_workflow 与 local_workflow 刻意分开：后者是 legacy `Workflow` 工具（不可取消），
 // 前者是 workflow run（经 DynamicWorkflowRunPort.cancel 可取消）。合成一个类型，取消分派就无法区分。
@@ -28,19 +35,51 @@ export interface RuntimeTaskPendingMessage {
   isMeta?: boolean;
   message: string;
   origin?: {
-    kind: "coordinator";
+    kind: "coordinator" | "user";
     toolCallId?: string;
   };
+  senderPath?: string;
+  targetPath?: string;
+  senderName?: string;
+  targetName?: string;
+  messageType?: "NEW_TASK" | "MESSAGE" | "FINAL_ANSWER";
   queuedAt: Date;
   summary?: string;
   traceContext?: TraceContext;
 }
 
 export interface RuntimeTaskMessageSink {
+  retainsUntilConsumed?: boolean;
+  sendActive?(message: RuntimeTaskPendingMessage, expectedTurnId?: TurnId): Promise<boolean>;
   send(message: RuntimeTaskPendingMessage): Promise<"queued" | "steered">;
 }
 
 export interface RuntimeTaskSnapshot extends SubagentTaskSnapshot {
+  multiAgent?: MultiAgentIdentity & {
+    resident: boolean;
+    runGeneration: number;
+    totalTokens?: number;
+    lifetimeUsage?: ModelUsageSummary;
+    accountedUsageIds?: string[];
+    model?: string;
+    reasoningEffort?: string;
+    forkTurns?: "all" | "none";
+    roleWasExplicit?: boolean;
+    initiatingAgentPath?: string;
+    initiatingTurnId?: string;
+    activitySequence?: number;
+    observedSequence?: number;
+    deliveredMessages?: number;
+  };
+  resumeState?: { request: SubagentRunRequest; profile: import("@zcode/shared").AgentProfile };
+  control?: {
+    executionHostSessionId?: SessionId;
+    resume(
+      request: SubagentSendMessageRequest,
+      options?: SubagentRunOptions,
+    ): Promise<SubagentSendMessageResult>;
+    stop(): Promise<SubagentTaskSnapshot | undefined>;
+  };
   /** 内存执行归属；重启不会恢复闲时后台任务。 */
   offPeakExecutionId?: string;
   offPeakCancelled?: boolean;
@@ -132,6 +171,7 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
   private readonly terminalWaiters = new Map<string, Set<RuntimeTaskWaiter>>();
 
   register(task: RuntimeTaskSnapshot): void {
+    task = this.withNickname(task);
     const stamped = {
       ...task,
       ...((task.offPeakExecutionId ?? this.offPeakExecutionId)
@@ -155,7 +195,15 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
   ): RuntimeTaskSnapshot | undefined {
     const current = this.tasks.get(id);
     if (!current) return undefined;
-    const next = patcher(current);
+    const next = this.withNickname(patcher(current));
+    if (
+      next.multiAgent &&
+      next.multiAgent.agentPath !== "/root" &&
+      next.status !== current.status &&
+      isTerminalRuntimeTask(next)
+    ) {
+      next.multiAgent = { ...next.multiAgent, resident: false };
+    }
     this.tasks.set(id, next);
     this.resolveIfTerminal(id, next);
     this.resolveIfBackgrounded(id, next);
@@ -171,6 +219,24 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
     this.resolveBackgroundWaiters(id, next);
     this.changed();
     return true;
+  }
+
+  private withNickname(task: RuntimeTaskSnapshot): RuntimeTaskSnapshot {
+    const identity = task.multiAgent;
+    if (!identity) return task;
+    const previous = this.tasks.get(task.taskId)?.multiAgent?.nickname;
+    if (identity.nickname || previous)
+      return { ...task, multiAgent: { ...identity, nickname: previous ?? identity.nickname } };
+    const existing = [...this.tasks.values()].flatMap((candidate) =>
+      candidate.multiAgent?.rootSessionId === identity.rootSessionId ? [candidate.multiAgent] : []);
+    const nickname = allocateMultiAgentNicknames([...existing, identity]).at(-1)!;
+    return {
+      ...task,
+      multiAgent: {
+        ...identity,
+        nickname,
+      },
+    };
   }
 
   remove(id: string): void {
@@ -191,7 +257,17 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
   queueMessage(id: string, message: RuntimeTaskPendingMessage): RuntimeTaskSnapshot | undefined {
     return this.update(id, (task) => ({
       ...task,
-      pendingMessages: [...(task.pendingMessages ?? []), message],
+      pendingMessages: (task.pendingMessages ?? []).some((queued) => queued.id === message.id)
+        ? task.pendingMessages
+        : [...(task.pendingMessages ?? []), message],
+      ...(task.multiAgent
+        ? {
+            multiAgent: {
+              ...task.multiAgent,
+              activitySequence: (task.multiAgent.activitySequence ?? 0) + 1,
+            },
+          }
+        : {}),
     }));
   }
 
@@ -311,4 +387,41 @@ export function hasRunningBackgroundRuntimeTask(registry: RuntimeTaskRegistry): 
 
 function abortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new Error("Runtime task wait aborted");
+}
+
+/** A child may enumerate its own tasks without advancing another session's branch generation. */
+export function createSessionScopedRuntimeTaskRegistry(
+  owner: RuntimeTaskRegistry,
+  sessionId: SessionId,
+): RuntimeTaskRegistry {
+  let generation = 0;
+  let offPeakExecutionId: string | undefined;
+  return {
+    subscribe: owner.subscribe?.bind(owner),
+    setActiveBranchGeneration(value) {
+      generation = value;
+    },
+    setOffPeakExecutionId(value) {
+      offPeakExecutionId = value;
+    },
+    all: () =>
+      Object.fromEntries(
+        Object.entries(owner.all()).filter(([, task]) => task.parentSessionId === sessionId),
+      ),
+    get: owner.get.bind(owner),
+    register(task) {
+      owner.register({
+        ...task,
+        branchGeneration: task.branchGeneration ?? generation,
+        ...(offPeakExecutionId ? { offPeakExecutionId } : {}),
+      });
+    },
+    update: owner.update.bind(owner),
+    remove: owner.remove.bind(owner),
+    queueMessage: owner.queueMessage.bind(owner),
+    drainMessages: owner.drainMessages.bind(owner),
+    requestBackground: owner.requestBackground.bind(owner),
+    waitForBackgroundRequest: owner.waitForBackgroundRequest.bind(owner),
+    waitForTerminal: owner.waitForTerminal.bind(owner),
+  };
 }

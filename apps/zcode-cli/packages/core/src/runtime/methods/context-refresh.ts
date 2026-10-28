@@ -37,14 +37,18 @@ export function rebuildContextPrefix(
   const effectiveContextResult = runtime.contextBuilder.build();
   const contextEntries = buildContextHistoryEntries(effectiveContextResult);
   const canonicalEntries = runtime.messageHistory.borrowReadOnlyRuntimeEntries();
-  const canonicalConversationEntries = canonicalEntries.slice(
-    countContextPrefixMessages(canonicalEntries),
-  );
-
   runtime.latestContextBuildResult = effectiveContextResult;
-  runtime.messageHistory.replaceMessages([...contextEntries, ...canonicalConversationEntries]);
+  runtime.messageHistory.replaceMessages(replaceOwnContextPrefix(canonicalEntries, contextEntries));
 
   const turnEntries = options.turnRequestEntries;
   if (!turnEntries) return runtime.messageHistory.borrowReadOnlyRuntimeEntries();
-  return [...contextEntries, ...turnEntries.slice(countContextPrefixMessages(turnEntries))];
+  return replaceOwnContextPrefix(turnEntries, contextEntries);
+}
+
+function replaceOwnContextPrefix(entries: readonly RuntimeMessageEntry[], contextEntries: readonly RuntimeMessageEntry[]): RuntimeMessageEntry[] {
+  let inheritedLength = 0;
+  while (entries[inheritedLength]?.metadata?.inheritedMultiAgentContext) inheritedLength++;
+  const ownEntries = entries.slice(inheritedLength);
+  return [...entries.slice(0, inheritedLength), ...contextEntries,
+    ...ownEntries.slice(countContextPrefixMessages(ownEntries))];
 }

@@ -1,3 +1,4 @@
+import { assertMultiAgentTokenBudget } from "../../multi-agent/index.js";
 import { beginLocalTurnPreparation } from "@zcode/contracts";
 import { runWithModelInvocationContext, traceContextToLogContext } from "../deps.js";
 import type { ModelReasoningContentBlock, ModelToolCall, ModelUsage, ToolCallId } from "../deps.js";
@@ -36,6 +37,8 @@ export async function runModelTextRequest(
   this: AgentRuntimeInternal,
   options: RunModelTextRequestOptions,
 ): Promise<RuntimeModelTextResult> {
+  await this.multiAgentPersistence?.ready;
+  assertMultiAgentTokenBudget(this.multiAgentRegistry, this.config.multiAgentIdentity, this.config.multiAgentV2);
   const finishAssembly = beginLocalTurnPreparation(options.traceContext, "request_assembly");
   const model = options.model;
   const executionModelSelection = {

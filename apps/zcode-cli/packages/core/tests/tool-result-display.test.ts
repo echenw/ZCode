@@ -1216,3 +1216,11 @@ describe("workflow observation tool displays", () => {
     expect(createToolResultDisplay("ResumeWorkflowRun", { runId: "" })).toBeUndefined();
   });
 });
+
+
+it.each(["send_message", "followup_task"] as const)("uses registered %s identity for the original bounded message display", (operation) => {
+  const display = createToolResultDisplay(`custom_${operation}`, { nickname: "Ada" }, { multiAgentOperation: operation });
+  expect(display).toEqual({ kind: "local_agent_message", status: "success", recipientName: "Ada" });
+  expect(parseToolResultDisplayPayload(display)).toEqual(display);
+  expect(createToolResultDisplay(`custom_${operation}`, { nickname: "Ada" })).toBeUndefined();
+});

@@ -12,6 +12,75 @@ import {
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ConfigScope } from "@zcode/contracts";
+import { createConfigPort } from "../src/config/index.js";
+
+describe("Multi-Agent V2 configuration", () => {
+  it("loads native V2 gates, namespace and capacities from a real config file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zcode-v2-config-"));
+    const configPath = join(dir, "config.json");
+    const multiAgentV2 = {
+      enabled: true, toolNamespace: "team-review", maxConcurrentThreadsPerSession: 16,
+      maxResidentAgents: 8, disableNativeTools: false, disableDirectMessage: true,
+      waitAgentEnabled: false, exposeSpawnAgentModelOverrides: true,
+      minWaitTimeoutMs: 0, maxWaitTimeoutMs: 1500, defaultWaitTimeoutMs: 100,
+      usageHintEnabled: false, usageHintText: "Spawn guidance sentinel.",
+      rootAgentUsageHintText: "Root guidance sentinel.", subagentUsageHintText: "",
+      subagentDeveloperInstructions: "Child developer sentinel.", multiAgentModeHintText: "Mode guidance sentinel.",
+      hideSpawnAgentMetadata: false, preserveForkPrefix: true,
+      delegationMode: "proactive", tokenBudget: 100_000,
+    };
+    try {
+      await writeFile(configPath, JSON.stringify({ multiAgentV2 }));
+      const loaded = loadFileConfig(configPath);
+      expect(loaded.diagnostics).toEqual([]);
+      expect(loaded.config.multiAgentV2).toEqual(multiAgentV2);
+      const result = createConfig({ userConfigPath: configPath, env: {} });
+      expect(result.config.multiAgentV2).toEqual(multiAgentV2);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("keeps lower-priority V2 fields when a later source overrides one gate", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zcode-v2-config-merge-"));
+    const userConfigPath = join(dir, "user.json");
+    try {
+      await writeFile(userConfigPath, JSON.stringify({ multiAgentV2: {
+        enabled: true, toolNamespace: "team", maxConcurrentThreadsPerSession: 8,
+      } }));
+      const result = createConfig({ userConfigPath, env: {}, cliOverrides: {
+        multiAgentV2: { disableDirectMessage: true },
+      } });
+      expect(result.config.multiAgentV2).toEqual({ enabled: true, toolNamespace: "team",
+        maxConcurrentThreadsPerSession: 8, disableDirectMessage: true });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("merges V2 session changes through the existing ConfigPort", () => {
+    const port = createConfigPort({ multiAgentV2: { enabled: true, toolNamespace: "team" } });
+    port.merge({ multiAgentV2: { waitAgentEnabled: false } }, ConfigScope.Session);
+    expect(port.getAll().multiAgentV2).toEqual({ enabled: true, toolNamespace: "team", waitAgentEnabled: false });
+  });
+
+  it.each([{ maxConcurrentThreadsPerSession: 0 }, { maxResidentAgents: 1.5 },
+    { toolNamespace: "a/b" }, { toolNamespace: "x".repeat(65) },
+    { tokenBudget: -1 }, { delegationMode: "unrestricted" }, { unknownGate: true },
+    { minWaitTimeoutMs: -1 }, { maxWaitTimeoutMs: 3_600_001 }, { defaultWaitTimeoutMs: 0.5 },
+    { minWaitTimeoutMs: 40, maxWaitTimeoutMs: 20, defaultWaitTimeoutMs: 30 },
+    { minWaitTimeoutMs: 10, maxWaitTimeoutMs: 20, defaultWaitTimeoutMs: 21 },
+    { rootAgentUsageHintText: false }, { subagentDeveloperInstructions: 123 },
+])(
+    "reports invalid V2 config instead of silently enabling it: %j", async (multiAgentV2) => {
+      const dir = await mkdtemp(join(tmpdir(), "zcode-v2-invalid-"));
+      const configPath = join(dir, "config.json");
+      try {
+        await writeFile(configPath, JSON.stringify({ multiAgentV2 }));
+        const loaded = loadFileConfig(configPath);
+        expect(loaded.diagnostics.length).toBeGreaterThan(0);
+        expect(loaded.config.multiAgentV2).toBeUndefined();
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    },
+  );
+});
 
 describe("config adapters", () => {
   it("migrates the legacy official CUA plugin id to the canonical id", async () => {

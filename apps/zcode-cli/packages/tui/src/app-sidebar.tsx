@@ -11,7 +11,7 @@ import { ApiSection } from "./app-sidebar-api.js";
 import { McpSection } from "./app-sidebar-mcp.js";
 import { ModifiedFilesSection } from "./app-sidebar-modified-files.js";
 import { SidebarSectionHeader } from "./app-sidebar-section-header.js";
-import { SubagentsSection } from "./app-sidebar-subagents.js";
+import { SubagentsSection } from "./multi-agent-ui/index.js";
 import type { SubagentItem, SubagentsController } from "./app-subagents.js";
 import {
   SIDEBAR_CONTENT_WIDTH,

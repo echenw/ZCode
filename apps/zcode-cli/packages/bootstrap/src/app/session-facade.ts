@@ -46,7 +46,7 @@ import {
   type ResolvedRegistrySelection,
 } from "./provider-registry-selection.js";
 import { isClosableSessionStore } from "./session-store.js";
-import { createSubagentObservation } from "./subagent-observation.js";
+import { createSubagentObservation } from "./multi-agent-observation/index.js";
 import type { PrepareUserExecutionBoundary, ZCodeApp } from "./types.js";
 import type { CliDefaultSelection } from "./cli-default-selection.js";
 
@@ -54,6 +54,7 @@ type SessionFacade = Pick<
   ZCodeApp,
   | "readBackgroundBashOutput"
   | "cancelBackgroundTask"
+  | "controlSubagent"
   | "clearTarget"
   | "close"
   | "callMcpToolForUi"
@@ -546,8 +547,13 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
     },
     readBackgroundBashOutput: (workId, sessionId) =>
       deps.runtime.readBackgroundBashOutput(workId, sessionId),
+    controlSubagent: async (input) => {
+      await deps.prepareResume();
+      return deps.runtime.controlSubagent(input, { traceContext: deps.traceContext });
+    },
     cancelBackgroundTask: async (taskId, options) =>
       deps.runtime.cancelBackgroundTask(taskId, {
+        scope: options?.scope,
         traceContext: options?.traceContext ?? deps.traceContext,
       }),
     disconnectMcpServer: async (name) => {

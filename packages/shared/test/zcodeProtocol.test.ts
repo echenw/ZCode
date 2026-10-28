@@ -15,6 +15,8 @@ import {
   zcodeMcpTelemetryEventSchema,
   zcodeSessionCreateParamsSchema,
   zcodeSessionCompactParamsSchema,
+  zcodeSessionCancelBackgroundTaskParamsSchema,
+  zcodeSessionCancelBackgroundTaskResultSchema,
   zcodeSessionEventSchema,
   zcodeSessionEventsResultSchema,
   zcodeSessionResumeParamsSchema,
@@ -74,6 +76,15 @@ const modelProperties = {
 };
 
 describe("ZCode Protocol", () => {
+  it("round-trips scoped agent cancellation and bounded per-task outcomes", () => {
+    expect(zcodeSessionCancelBackgroundTaskParamsSchema.parse({ sessionId: "root", taskId: "agent", scope: "subtree" }))
+      .toEqual({ sessionId: "root", taskId: "agent", scope: "subtree" });
+    const result = { taskId: "agent", status: "cancelled", cancelled: true, scope: "subtree",
+      tasks: [{ taskId: "agent", status: "cancelled", cancelled: true }] };
+    expect(zcodeSessionCancelBackgroundTaskResultSchema.parse(result)).toEqual(result);
+    expect(zcodeSessionCancelBackgroundTaskParamsSchema.safeParse({ sessionId: "root", taskId: "agent", scope: "all-projects" }).success)
+      .toBe(false);
+  });
   it("模型格式能力只接受完整的嵌套 properties 契约", () => {
     const properties = {
       inputFormat: {

@@ -5,6 +5,7 @@ import type { AgentRuntimeInternal } from "../internal.js";
 import type { EnqueueSubagentMessageInput } from "../types.js";
 import { runtimeInputMetadata } from "../../agent/runtime-input-presentation.js";
 import { escapeXml } from "../../runtime-task/notification.js";
+import { notifyMultiAgentParent } from "../../multi-agent/index.js";
 
 export function formatSubagentMessage(input: {
   agentId: string;
@@ -38,6 +39,15 @@ export function enqueueSubagentMessage(
       module: "core.runtime",
       responseId: input.responseId,
     });
+    return undefined;
+  }
+  const owner = this.multiAgentRegistry;
+  const child = owner?.get(input.agentId);
+  if (owner && this.config.multiAgentV2?.enabled && child?.multiAgent &&
+      child.multiAgent.rootSessionId === this.config.multiAgentIdentity?.rootSessionId) {
+    // Root 可重绑孙代理执行；执行宿主不是其逻辑父级。由 Registry 的真实 parentPath
+    // 路由同根邮箱，保留 stale-branch 准入，禁止落入旧队列额外唤醒 Root。
+    notifyMultiAgentParent(owner, child, input.message, { messageId: input.responseId, messageType: "MESSAGE" });
     return undefined;
   }
   const command = {

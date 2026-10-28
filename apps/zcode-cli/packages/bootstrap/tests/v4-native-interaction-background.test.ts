@@ -695,6 +695,42 @@ describe("v4 原生 cancelBackgroundWork", () => {
     expect(cancelBackgroundTask).toHaveBeenCalledWith("task-9");
   });
 
+  it.each(["subtree", "tree"] as const)("passes explicit %s scope and never aborts a newer Root controller", async (scope) => {
+    const original = new AbortController();
+    const replacement = new AbortController();
+    const record = makeRecord({ sessionId: "s1" });
+    const cancelBackgroundTask = vi.fn(async () => {
+      record.activeAbortController = replacement;
+      return { taskId: "task-9", scope, cancelled: true, status: "cancelled" as const, tasks: [] };
+    });
+    record.app.cancelBackgroundTask = cancelBackgroundTask;
+    record.activeAbortController = original;
+    const host = makeHost({ getRecord: () => record });
+    await new V4CommandExecutor(host).execute(envelope("cancelBackgroundWork", { workId: "task-9", scope }));
+    expect(cancelBackgroundTask).toHaveBeenCalledWith("task-9", { scope });
+    expect(original.signal.aborted).toBe(scope === "tree");
+    expect(replacement.signal.aborted).toBe(false);
+  });
+
+  it("does not abort Root when a tree cancellation is rejected before admission", async () => {
+    const controller = new AbortController();
+    const cancelBackgroundTask = vi.fn().mockResolvedValue({ taskId: "foreign", scope: "tree",
+      cancelled: false, status: "lost", reason: "background_task_not_found" });
+    const record = makeRecord({ sessionId: "s1", cancelBackgroundTask });
+    record.activeAbortController = controller;
+    const host = makeHost({ getRecord: () => record });
+    await expect(new V4CommandExecutor(host).execute(envelope("cancelBackgroundWork",
+      { workId: "foreign", scope: "tree" }))).rejects.toMatchObject({ reasonCode: "fault.command.backgroundWorkCancelRejected.not_found" });
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  it("rejects a scoped request when an older app does not acknowledge its scope", async () => {
+    const record = makeRecord({ sessionId: "s1", cancelBackgroundTask: vi.fn().mockResolvedValue(undefined) });
+    const host = makeHost({ getRecord: () => record });
+    await expect(new V4CommandExecutor(host).execute(envelope("cancelBackgroundWork",
+      { workId: "task-9", scope: "subtree" }))).rejects.toThrow(V4CapabilityUnsupportedError);
+  });
+
   it("能力不支持：runtime 无 cancelBackgroundTask → 结构化 reasonCode 错误", async () => {
     const record = makeRecord({ sessionId: "s1" });
     const host = makeHost({

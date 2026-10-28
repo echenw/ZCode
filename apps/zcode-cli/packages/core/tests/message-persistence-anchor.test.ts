@@ -42,6 +42,20 @@ function trace(turnId?: ReturnType<typeof createTurnId>): TraceContext {
 }
 
 describe("v4 transcript 锚点（additive JSON）", () => {
+  it.each(["coordinator_steer", "subagent_reply_steer", "subagent_reply"] as const)("%s persists mailbox provenance and keeps the admission anchor", async (inputPresentation) => {
+    const { saved, fakeRuntime } = createHarness();
+    const turnId = createTurnId();
+    await persistUserPrompt.call(fakeRuntime as never, createMessageId(), "agent mail", undefined, trace(turnId), {
+      inputPresentation, steerDelivery: "guide", sourceCommandId: "mail-1",
+    });
+    expect(saved[0]).toMatchObject({
+      source: "subagent_message",
+      semantics: { origin: "agent_runtime", kind: "subagent_notification" },
+      anchor: { turnId, origin: "mailbox", sourceCommandId: "mail-1" },
+      metadata: { inputPresentation, turnSteerDelivery: "guide" },
+    });
+  });
+
   it("persistUserPrompt：anchor 带 turnId + origin=realUser", async () => {
     const { saved, fakeRuntime } = createHarness();
     const turnId = createTurnId();

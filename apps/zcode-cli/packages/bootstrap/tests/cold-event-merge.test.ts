@@ -13,7 +13,8 @@ import { buildColdFileChangeSummaries } from "../src/zcode-protocol-v4/cold-file
 import * as coldEventMerge from "../src/zcode-protocol-v4/cold-event-merge.js";
 import { synthesizeEventsFromMessages } from "../src/zcode-protocol-v4/transcript-hydration.js";
 
-const { loadPersistedConversationMaterialization, mergeColdConversationEvents } = coldEventMerge;
+const { mergeColdConversationEvents } = coldEventMerge;
+import { loadPersistedConversationMaterialization } from "../src/zcode-protocol-v4/agent-communication/materialize.js";
 
 function userMessage(id: string, text: string, created: number, turnId: string): MessageWithParts {
   return {
@@ -1444,4 +1445,62 @@ describe("cold conversation three-source merge", () => {
       ),
     ).toBe(false);
   });
+});
+
+
+it("restores named agent mail without mutating its persisted text or real-user identity", () => {
+  const text = "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/legacy_1234\nPayload:\n<task-notification><result>&lt;review&gt; &amp; &amp;lt;</result></task-notification>";
+  const first = userMessage("u1", "coordinate", 1, "turn");
+  const incoming = userMessage("mail", text, 2, "turn");
+  incoming.info.metadata = { turnSteerDelivery: "guide", inputPresentation: "coordinator_steer" };
+  const before = JSON.stringify(incoming);
+  const { events } = mergeColdConversationEvents({ memoryEvents: [], messages: [first, incoming, assistantMessage("a1", "u1", "done", 3, "turn")],
+    sessionId: "s1", agentNames: { "/root": "Main", "/root/legacy_1234": "Ada" },
+  });
+  const projection = reduce(events).getSnapshot();
+  const mail = projection.rows.window.find((row) => row.kind === "userInput" && row.text === text);
+  expect(mail).toMatchObject({ origin: "mailbox", agentMessage: { messageType: "FINAL_ANSWER", senderName: "Ada", targetName: "Main", body: "<review> & &lt;" } });
+  expect(JSON.stringify(incoming)).toBe(before);
+});
+
+
+it.each(["multiAgentTreeProjection", "multiAgentRootProjection"])("keeps %s lifecycle without inventing an ancestor prompt turn", (marker) => {
+  const first = userMessage("u-ancestor", "work", 1, "turn-ancestor");
+  const memoryEvents = [
+    event(1, SessionEventType.TurnStarted, { turnNumber: 1, input: "work" }, "turn-ancestor"),
+    event(2, SessionEventType.SubagentSpawned, { agentId: "b", agentType: "worker", childSessionId: "child-b", agentPath: "/root/a/b", description: "B" }, "turn-ancestor"),
+    event(3, SessionEventType.SubagentSpawned, { agentId: "c", agentType: "worker", childSessionId: "child-c", agentPath: "/root/a/b/c", description: "C", [marker]: true }),
+  ];
+  const merged = mergeColdConversationEvents({ memoryEvents, messages: [first], sessionId: "s1" });
+  expect(reduce(merged.events).getSnapshot().subagents?.running).toHaveLength(2);
+  const stopped = event(4, SessionEventType.SubagentStopped, { agentId: "c", childSessionId: "child-c", status: "completed", [marker]: true });
+  const final = reduce(mergeColdConversationEvents({ memoryEvents: [...memoryEvents, stopped], messages: [first], sessionId: "s1" }).events).getSnapshot();
+  expect(final.subagents?.running.map((item) => item.childSessionId)).toEqual(["child-b"]);
+  expect(final.subagents?.endedTotal).toBe(1);
+});
+
+it("shows failed agent completion text without exposing the host notification wrapper", async () => {
+  const { agentMessageFromInput } = await import("../src/zcode-protocol-v4/projection-rows.js");
+  const text = "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/a\nPayload:\n<task-notification><task-id>opaque-id</task-id><status>failed</status><error>Read &lt;file&gt; failed</error></task-notification>";
+  expect(agentMessageFromInput(text, "coordinator_steer")?.body).toBe("Read <file> failed");
+  expect(agentMessageFromInput(text, "user_steer")).toBeUndefined();
+});
+
+it("reads stable old-graph aliases through same-project ancestry and refuses another project", async () => {
+  const { readPersistedAgentNames } = await import("../src/app/session-store.js");
+  const graph = { version: 1, rootSessionId: "root", tasks: [
+    { taskId: "root-task", agentId: "root-task", childSessionId: "root", path: "/root" },
+    { taskId: "a", agentId: "a", childSessionId: "child", path: "/root/a" },
+    { taskId: "b", agentId: "b", childSessionId: "grandchild", path: "/root/a/b", nickname: "Ada" },
+  ].map(({ path, nickname, ...task }) => ({ ...task, agentType: "test", description: "fixture", status: "completed", startedAt: new Date(0).toISOString(), pendingMessages: [], multiAgent: { agentPath: path, rootSessionId: "root", nickname, resident: false, runGeneration: 1 } })) };
+  const sessions = new Map<string, { projectID: string; parentID?: SessionId }>([
+    ["root", { projectID: "p" }], ["child", { projectID: "p", parentID: "root" as SessionId }], ["grandchild", { projectID: "p", parentID: "child" as SessionId }],
+  ]);
+  const store = { getSession: async (id: SessionId) => sessions.get(id) ?? null,
+    sessionEntries: async ({ sessionID }: { sessionID: SessionId }) => sessionID === "root" ? [{ id: "graph", sessionID: "root", type: "multi_agent/graph", time: { created: 0, updated: 0 }, data: graph }] : [] };
+  const before = JSON.stringify(graph);
+  expect(await readPersistedAgentNames(store, "grandchild")).toMatchObject({ "/root": "Main", "/root/a": "Turing", child: "Turing", b: "Ada", grandchild: "Ada" });
+  expect(JSON.stringify(graph)).toBe(before);
+  sessions.set("root", { projectID: "other" });
+  expect(await readPersistedAgentNames(store, "grandchild")).toEqual({});
 });

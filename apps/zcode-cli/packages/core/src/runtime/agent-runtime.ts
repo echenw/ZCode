@@ -1,3 +1,5 @@
+import { multiAgentRootId } from "../multi-agent/index.js";
+import { createSessionScopedRuntimeTaskRegistry } from "../runtime-task/registry.js";
 import { configureOffPeakRuntime, controlOffPeakRuntime } from "./off-peak/runtime.js";
 import {
   createTurnAgentDefinitions,
@@ -20,6 +22,7 @@ import {
 import type {
   CollaborationMode,
   Logger,
+  BackgroundTaskCancelOptions,
   BackgroundTaskCancelResult,
   SessionEvent,
   MessageId,
@@ -129,7 +132,7 @@ import type {
   WorkspaceForkResult,
 } from "./types.js";
 import type { AgentRuntimeInternal } from "./internal.js";
-import { InMemoryRuntimeTaskRegistry, type RuntimeTaskRegistry } from "../runtime-task/registry.js";
+import { InMemoryRuntimeTaskRegistry, isTerminalRuntimeTask, type RuntimeTaskRegistry } from "../runtime-task/registry.js";
 import type { WorkflowBlockedReminderClock } from "../runtime-task/workflow-blocked-reminder.js";
 import { createWorkflowBlockedReminder } from "./methods/dynamic-workflow-blocked-reminder.js";
 import { createMemoryRecallState } from "../memory/recall/index.js";
@@ -214,6 +217,8 @@ export class AgentRuntime {
   private dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
   private modelCatalogPort?: ModelCatalogPort;
   private runtimeTaskRegistry: RuntimeTaskRegistry;
+  private multiAgentRegistry?: RuntimeTaskRegistry;
+  private multiAgentPersistence?: import("../multi-agent/index.js").MultiAgentPersistence;
   // 「run 还欠着决定、主代理闲着」的提醒钟；由命令队列的忙 / 闲沿驱动，beginShutdown 停掉。
   private workflowBlockedReminder: WorkflowBlockedReminderClock;
   private branchGeneration = 0;
@@ -258,6 +263,7 @@ export class AgentRuntime {
   // activeTurn.pendingInputs 做行内 drain，否则新入队消息会越过仍留在投影中的旧暂停项。
   private queueExternalDrainActive = false;
   private shuttingDown = false;
+  private multiAgentShutdown?: Promise<void>;
   private backgroundTaskNotificationsSealed = false;
   private backgroundTaskNotificationSealReason?: "subagent_terminal" | "subagent_cancelled";
   private pendingModelChangeTimeline?: PendingModelChangeTimeline;
@@ -339,6 +345,19 @@ export class AgentRuntime {
     this.skillPort = deps.skillPort;
     this.mcpPort = deps.mcpPort;
     this.runtimeTaskRegistry = deps.runtimeTaskRegistry ?? new InMemoryRuntimeTaskRegistry();
+    if (this.config.multiAgentV2?.enabled) {
+      this.config.multiAgentIdentity ??= { agentPath: "/root", rootSessionId: sessionId };
+      this.multiAgentRegistry = deps.multiAgentRegistry ?? this.runtimeTaskRegistry;
+      this.runtimeTaskRegistry = createSessionScopedRuntimeTaskRegistry(this.multiAgentRegistry, sessionId);
+      if (this.config.multiAgentIdentity.agentPath === "/root") {
+        const rootId = multiAgentRootId(sessionId);
+        if (!this.multiAgentRegistry.get(rootId)) this.multiAgentRegistry.register({
+          taskId: rootId, agentId: rootId, agentType: "root", description: "Main agent",
+          status: "completed", startedAt: new Date(), type: "local_agent", childSessionId: sessionId,
+          pendingMessages: [], multiAgent: { ...this.config.multiAgentIdentity, resident: true, runGeneration: 0 },
+        });
+      }
+    }
     this.runtimeTaskRegistry.setActiveBranchGeneration?.(this.branchGeneration);
     this.workflowBlockedReminder = createWorkflowBlockedReminder(runtime);
     this.artifactStore = deps.artifactStore;
@@ -346,6 +365,7 @@ export class AgentRuntime {
     this.fileSystemPort = deps.fileSystemPort;
     this.imageProcessorPort = deps.imageProcessorPort;
     this.pdfDocumentPort = deps.pdfDocumentPort;
+    this.multiAgentPersistence = deps.multiAgentPersistence;
     this.subagentPort = deps.subagentPort ?? runtime.createDefaultSubagentPort(deps);
     this.dynamicWorkflowRunPort = deps.dynamicWorkflowRunPort;
     // GUI「配置」解析子代理模型用的目录（与工具上下文拿的是同一个端口）。
@@ -369,6 +389,8 @@ export class AgentRuntime {
 
   async closeBrowserSession(): Promise<void> {
     this.beginShutdown();
+    // 让子任务状态和邮箱在 Session Store 关闭前完成持久化。
+    await this.multiAgentShutdown;
     disposeNodeReplSession(this.sessionId);
     try {
       await this.browserControlPort?.closeSession?.({
@@ -385,9 +407,32 @@ export class AgentRuntime {
   }
 
   beginShutdown(): void {
+    if (this.shuttingDown) return;
     // ExecutionPort.close() 会把后台 Bash 收口为 cancelled；若允许
     // teardown terminal event 再唤醒模型，并与随后关闭的 session store 竞态。
     this.shuttingDown = true;
+    const identity = this.config.multiAgentIdentity;
+    if (identity?.agentPath === "/root") {
+      const children = Object.values(this.multiAgentRegistry?.all() ?? {}).filter(
+        (task) => task.type === "local_agent" && task.multiAgent?.rootSessionId === identity.rootSessionId &&
+          task.multiAgent.agentPath !== "/root" && !isTerminalRuntimeTask(task),
+      );
+      // 向所有子孙同步发出原控制器的停止，再等待结算；不能让共享 Execution 关闭后继续采样。
+      const stops = children.map((task) => {
+        try {
+          return task.control ? Promise.resolve(task.control.stop()) : Promise.reject(new Error("Missing agent control"));
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      });
+      this.multiAgentShutdown = Promise.allSettled(stops).then(async (results) => {
+        const failed = results.filter((result) => result.status === "rejected").length;
+        if (failed) this.logger?.warn("Some child agents could not be stopped during shutdown", { failed });
+        await this.multiAgentPersistence?.flush();
+      }).catch(() => {
+        this.logger?.warn("Multi-agent shutdown persistence failed");
+      });
+    }
     // 同一条理由：会话在关，提醒钟不能再到点唤起一轮。
     this.workflowBlockedReminder.stop();
     // 关闭单个 session 后进程仍存活，
@@ -660,9 +705,13 @@ export interface AgentRuntime {
   getPendingPermissionRequests(): PermissionBrokerRequest[];
   getProjection(): Promise<SessionProjection>;
   readBackgroundBashOutput(workId: string, sessionId?: string): Promise<BackgroundBashOutputResult>;
+  controlSubagent(
+    input: import("@zcode/contracts").SubagentUserControlInput,
+    options?: { traceContext?: import("@zcode/contracts").TraceContext },
+  ): Promise<import("@zcode/contracts").SubagentUserControlResult>;
   cancelBackgroundTask(
     taskId: string,
-    options?: { traceContext?: TraceContext },
+    options?: BackgroundTaskCancelOptions,
   ): Promise<BackgroundTaskCancelResult>;
   stopBackgroundTask(
     taskId: string,

@@ -1196,6 +1196,53 @@ describe("订阅与帧调度", () => {
     expect(JSON.stringify(host.telemetryFacts)).not.toContain("secret=1");
   });
 
+  it.each(["live", "cold"])("V2 %s projection retains the real four-level tree, model and usage", async (mode) => {
+    const host = makeHost();
+    const gateway = makeGateway(host);
+    const log = new EventLog();
+    sessionCreated(log);
+    const paths = ["/root/a", "/root/a/b", "/root/a/b/c"];
+    for (const [index, agentPath] of paths.entries()) {
+      log.push(SessionEventType.SubagentSpawned, {
+        agentId: `agent-${index}`, agentType: "general-purpose", agentPath,
+        parentAgentPath: agentPath.slice(0, agentPath.lastIndexOf("/")),
+        parentSessionId: index === 0 ? "session-1" : `child-${index - 1}`,
+        rootSessionId: "session-1", childSessionId: `child-${index}`,
+        model: `provider-${index}/model-${index}`, reasoningEffort: "high",
+        description: `task ${index}`, multiAgentUsage: { totalTokens: index + 1 },
+        ...(index > 0 ? { multiAgentRootProjection: true, sourceSessionId: `child-${index - 1}` } : {}),
+      });
+    }
+    log.push(SessionEventType.SubagentMessage, {
+      agentId: "agent-1", agentPath: paths[1], parentSessionId: "child-0",
+      multiAgentUsage: { totalTokens: 19 },
+    });
+    log.push(SessionEventType.SubagentStopped, {
+      agentId: "agent-2", childSessionId: "child-2", agentPath: paths[2],
+      parentSessionId: "child-1", rootSessionId: "session-1", status: "completed",
+      multiAgentUsage: { totalTokens: 23 },
+    });
+    if (mode === "cold") host.persistedEvents.set("session-1", log.events);
+    else for (const event of log.events) gateway.ingest("session-1", event);
+    const result = await gateway.subscribe(subscribeParams());
+    const snapshot = result.initialFrame?.payload.kind === "snapshot"
+      ? result.initialFrame.payload.snapshot : undefined;
+    expect(snapshot?.subagents.running).toHaveLength(2);
+    expect(snapshot?.subagents.endedTotal).toBe(1);
+    expect(snapshot?.subagents.running).toContainEqual(expect.objectContaining({
+      agentPath: "/root/a/b", parentAgentPath: "/root/a", parentSessionId: "child-0",
+      rootSessionId: "session-1", modelId: "model-1", providerId: "provider-1",
+      reasoningEffort: "high", totalTokens: 19, title: "task 1",
+      startedAt: new Date(1_700_000_003_000).getTime(),
+    }));
+    const rows = snapshot?.rows.window.filter((row) => row.kind === "subagent");
+    expect(rows?.map((row) => row.agentPath)).toEqual(paths);
+    expect(rows?.at(-1)).toMatchObject({
+      status: "success", parentSessionId: "child-1", modelId: "model-2",
+      providerId: "provider-2", reasoningEffort: "high", totalTokens: 23,
+    });
+  });
+
   it("SubagentSpawned/Stopped 只透传父子关联和 background 状态", () => {
     const host = makeHost();
     const gateway = makeGateway(host);

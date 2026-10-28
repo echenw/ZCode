@@ -1,3 +1,6 @@
+import { recordMultiAgentUsage } from "../../multi-agent/index.js";
+import { createModelUsageSummary, createSessionEvent } from "@zcode/contracts";
+import { publishSubagentTreeEvent } from "../../subagent/index.js";
 import {
   CoreErrorType,
   SessionEventType,
@@ -57,11 +60,13 @@ export async function recordModelUsageFact(
   runtime: AgentRuntimeInternal,
   input: RecordModelUsageInput,
 ): Promise<void> {
+  const networkEvents = modelNetworkEvents(input.events.slice(input.networkEventStartIndex));
+  // The runtime Model handle already admitted and charged this request, including tool-internal
+  // calls. This fact writer only owns UsageStore projection; charging again here double counts.
   const usageStore = usageStoreFor(runtime);
   if (!usageStore) return;
 
   const completedAt = Date.now();
-  const networkEvents = modelNetworkEvents(input.events.slice(input.networkEventStartIndex));
   const retryCount = networkEvents.filter((event) => event.type === "model_retry_scheduled").length;
   const failedNetworkEvent = networkEvents.findLast(
     (event) => event.type === "model_request_failed",
@@ -126,6 +131,33 @@ export async function recordModelUsageFact(
       module: "core.runtime",
       status: "failed",
     });
+  }
+}
+
+/** One accepted provider usage fact, shared by result/finish/status at the Model handle boundary. */
+export async function recordRuntimeModelUsage(
+  runtime: AgentRuntimeInternal,
+  input: {
+    agentStep: boolean;
+    model: Model;
+    traceContext: TraceContext;
+    usage: ModelUsage;
+    usageRequestId: string;
+  },
+): Promise<void> {
+  const executionModel = input.agentStep
+    ? { model: `${input.model.providerId}/${input.model.modelId}`, reasoningEffort: input.model.options.reasoningLevel }
+    : undefined;
+  const accounted = recordMultiAgentUsage(runtime.multiAgentRegistry, runtime.config.multiAgentIdentity,
+    createModelUsageSummary([input.usage]), input.usageRequestId, executionModel);
+  if (!accounted) return;
+  await runtime.multiAgentPersistence?.flush();
+  if (accounted.multiAgent && accounted.multiAgent.agentPath !== "/root" && accounted.parentSessionId) {
+    await publishSubagentTreeEvent({ emitParentEvent: (event, trace) => runtime.appendEvent(event, trace) },
+      createSessionEvent(SessionEventType.SubagentMessage, accounted.parentSessionId, {
+        usageRequestId: input.usageRequestId, totalTokens: accounted.multiAgent.totalTokens,
+        multiAgentUsage: accounted.multiAgent.lifetimeUsage,
+      }, { traceId: input.traceContext.traceId }), input.traceContext, accounted);
   }
 }
 

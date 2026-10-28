@@ -57,9 +57,10 @@ import {
   initialSessionProjection,
 } from "./event-reducer-helpers.js";
 
-function shouldModelCompleteUpdateContextUsed(payload: ModelCompletePayload): boolean {
+function shouldModelCompleteUpdateContextUsed(payload: ModelCompletePayload, ownSession: boolean): boolean {
   if (payload.querySource !== undefined) {
-    return payload.querySource === "main_turn";
+    // 子代理的主执行轮使用 subagent 来源；只能更新它自身的上下文，不能覆盖父会话。
+    return payload.querySource === "main_turn" || (payload.querySource === "subagent" && ownSession);
   }
 
   // 兼容旧版主会话事件没有 querySource 的历史数据；工具/子任务内部模型调用
@@ -209,10 +210,10 @@ export class EventReducer {
           updatedAt: e.timestamp,
         };
       }
-      // 输入栏 context usage 只代表主会话发给 provider 的最新上下文。
-      // 标题生成、压缩摘要、子代理和工具内部模型调用都不是当前主 session 的可见上下文，
+      // 输入栏 context usage 代表当前会话发给 provider 的最新上下文。
+      // 标题生成、压缩摘要、其它子会话和工具内部模型调用都不是当前 session 的可见上下文，
       // 如果用它们的 usage 覆盖 projection，UI 会显示成 89/1m 这类 sidecar 小请求。
-      if (!shouldModelCompleteUpdateContextUsed(payload)) {
+      if (!shouldModelCompleteUpdateContextUsed(payload, e.sessionId === p.id)) {
         return {
           ...p,
           updatedAt: e.timestamp,

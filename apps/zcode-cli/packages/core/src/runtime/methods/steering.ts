@@ -1,3 +1,4 @@
+import { acknowledgeMultiAgentMessage, updateMultiAgentRootTurn } from "../../multi-agent/index.js";
 import { parseRuntimeInputPresentation } from "@zcode/contracts";
 import {
   unpublishedPermissionGrants,
@@ -119,6 +120,10 @@ export async function steerTurn(
     });
   }
 
+  if ((request.inputPresentation === "coordinator_steer" || request.inputPresentation === "user_steer") && request.inputId) {
+    const pending = activeTurn.pendingInputs.find((input) => input.queryId === request.inputId);
+    if (pending) return { kind: "queued", pendingInputId: pending.id, queueLength: activeTurn.pendingInputs.length, turnId: activeTurn.turnId };
+  }
   const queryId = request.queryId ?? (request.inputId as QueryId | undefined) ?? createQueryId();
   const commandKind = request.commandKind;
   const source: TurnSteerSource | undefined = request.source;
@@ -162,6 +167,7 @@ export async function steerTurn(
       : undefined,
   );
   activeTurn.pendingInputs.push(pendingInput);
+  if (typeof input === "string" || request.inputPresentation === "user_steer") this.subagentPort?.multiAgent?.notifyUserSteer?.();
   // 用户亲手 steer 进来的话（协调者 / 信箱 / 工具跟进也走这里，它们不算）：与 prompt 一样，给每个
   // 欠着决定的 run 一对新的提醒。
   if (request.inputPresentation === "user_steer") this.workflowBlockedReminder?.userSpoke();
@@ -352,6 +358,10 @@ export function beginActiveTurn(
   };
   this.activeTurnStartReservation = undefined;
   this.activeTurn = activeTurn;
+  updateMultiAgentRootTurn(this.multiAgentRegistry, this.config.multiAgentIdentity, true, turnId, !this.multiAgentPersistence);
+  if (this.multiAgentPersistence) void this.multiAgentPersistence.ready.then(() => {
+    if (this.activeTurn === activeTurn) updateMultiAgentRootTurn(this.multiAgentRegistry, this.config.multiAgentIdentity, true, turnId);
+  }).catch(() => { /* The request boundary awaits and reports the same hydration failure. */ });
   return activeTurn;
 }
 
@@ -386,6 +396,7 @@ export function finishActiveTurn(
 ): void {
   if (activeTurn !== undefined && this.activeTurn === activeTurn) {
     this.activeTurn = undefined;
+    updateMultiAgentRootTurn(this.multiAgentRegistry, this.config.multiAgentIdentity, false);
   }
 }
 
@@ -1226,6 +1237,7 @@ async function drainPendingInputUnlocked(
     messageId: MessageId;
     text: string;
     delivery?: "guide" | "queue";
+    inputPresentation?: PendingTurnInput["inputPresentation"];
     intent?: NonNullable<PendingTurnInput["intent"]>;
     toolDisallowlist?: readonly string[];
   }> = [];
@@ -1276,12 +1288,15 @@ async function drainPendingInputUnlocked(
         intent: pendingInput.intent,
       },
     );
+    acknowledgeMultiAgentMessage(this.multiAgentRegistry, this.config?.multiAgentIdentity, pendingInput.queryId);
+    await this.multiAgentPersistence?.flush();
     messageIds.push(messageId);
     drainedInputs.push({
       pendingInputId: pendingInput.id,
       messageId,
       text: pendingInput.input,
       delivery,
+      ...(inputPresentation ? { inputPresentation } : {}),
       ...(pendingInput.intent ? { intent: pendingInput.intent } : {}),
       ...(pendingInput.toolDisallowlist ? { toolDisallowlist: pendingInput.toolDisallowlist } : {}),
     });

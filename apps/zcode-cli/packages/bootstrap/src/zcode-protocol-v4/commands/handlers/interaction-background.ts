@@ -184,9 +184,18 @@ async function cancelBackgroundWork(
     throw new V4CapabilityUnsupportedError("cancelBackgroundTask", record.app.sessionId);
   }
   // 注意：方法必须经 app 调用（不可解构，实现可能依赖 this 绑定）。
-  const result = await record.app.cancelBackgroundTask(payload.workId);
+  const controller = record.activeAbortController;
+  const result = payload.scope === undefined
+    ? await record.app.cancelBackgroundTask(payload.workId)
+    : await record.app.cancelBackgroundTask(payload.workId, { scope: payload.scope });
+  if (payload.scope === "tree" && result?.scope === "tree" && result.tasks !== undefined) {
+    controller?.abort(new Error("Explicit multi-agent tree stop"));
+  }
   if (result?.reason !== undefined) {
     throw new V4BackgroundWorkCancelRejectedError(result.reason, payload.workId);
+  }
+  if (payload.scope && payload.scope !== "task" && result?.scope !== payload.scope) {
+    throw new V4CapabilityUnsupportedError("scopedBackgroundTaskCancellation", record.app.sessionId);
   }
   return undefined;
 }
@@ -307,7 +316,15 @@ async function amendWorkflowRunSettings(
   };
 }
 
+async function controlSubagent(host: V4CommandCoreHost, envelope: CommandEnvelope): Promise<CommandResult | undefined> {
+  const record = requireRecord(host, envelope.sessionId);
+  if (!record.app.controlSubagent) throw new V4CapabilityUnsupportedError("controlSubagent", record.app.sessionId);
+  await record.app.controlSubagent(envelope.payload as CommandPayloadMap["controlSubagent"]);
+  return undefined;
+}
+
 export const interactionBackgroundHandlers = {
+  controlSubagent,
   resolveInteraction,
   respondWorkspaceHookReview,
   toggleWorkspaceHookReviewItem,

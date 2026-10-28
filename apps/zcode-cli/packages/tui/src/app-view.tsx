@@ -41,7 +41,7 @@ import type {
 import type { TuiEffortOption, TuiModeOption, TuiOptions } from "./types.js";
 import type { TuiWorkflowCard } from "./app-workflow-mirror.js";
 import type { SubagentItem, SubagentsController } from "./app-subagents.js";
-import { SubagentView } from "./app-subagent-view.js";
+import { SubagentView } from "./multi-agent-ui/index.js";
 
 const h = React.createElement as (
   type: React.ElementType | string,

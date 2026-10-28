@@ -68,6 +68,8 @@ import type {
 // -----------------------------------------------
 
 export interface ToolMetadata {
+  /** Built-in V2 identity from registration, never inferred from a wire suffix. */
+  multiAgentOperation?: import("@zcode/contracts").MultiAgentOperation;
   shouldDefer?: boolean;
   alwaysLoad?: boolean;
   searchHint?: string;

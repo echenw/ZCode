@@ -2,6 +2,7 @@ import type { AiSdkModelAdapter } from "@zcode/adapters/model";
 import type {
   AgentTelemetryRuntimeOwner,
   AutomationPort,
+  BackgroundTaskCancelOptions,
   BackgroundTaskCancelResult,
   BrowserControlPort,
   CollaborationMode,
@@ -361,7 +362,7 @@ export interface ZCodeApp {
   }): Promise<import("@zcode/shared").ZCodeSessionSubagentsResult>;
   readSubagentTranscript(
     childSessionId: string,
-  ): Promise<import("./subagent-observation.js").SubagentTranscriptSnapshot>;
+  ): Promise<import("./multi-agent-observation/index.js").SubagentTranscriptSnapshot>;
   readTodos(): Promise<TodoItem[]>;
   readTarget(): Promise<SessionGoal | null>;
   setCustomSessionTitle(input: { title: string; traceContext?: TraceContext }): Promise<void>;
@@ -493,9 +494,12 @@ export interface ZCodeApp {
     options?: { signal?: AbortSignal },
   ): Promise<McpReadResourceResult>;
   readBackgroundBashOutput(workId: string, sessionId?: string): Promise<BackgroundBashOutputResult>;
+  controlSubagent?(
+    input: import("@zcode/contracts").SubagentUserControlInput,
+  ): Promise<import("@zcode/contracts").SubagentUserControlResult>;
   cancelBackgroundTask?(
     taskId: string,
-    options?: { traceContext?: TraceContext },
+    options?: BackgroundTaskCancelOptions,
   ): Promise<BackgroundTaskCancelResult>;
   /**
    * workflow run 的事件日志分页（详情页审计面）。可选能力：dwf journal 不可用时 run service

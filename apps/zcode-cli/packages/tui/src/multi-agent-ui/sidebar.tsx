@@ -1,11 +1,11 @@
 import React from "react";
 import { useTerminalDimensions } from "@mbears/opentui-react";
 import type { TuiCopy } from "@zcode/i18n";
-import { palette } from "./app-model.js";
-import { SidebarSectionHeader } from "./app-sidebar-section-header.js";
-import { SIDEBAR_CONTENT_WIDTH } from "./app-sidebar-layout.js";
-import { truncateDisplay } from "./app-terminal-width.js";
-import type { SubagentItem, SubagentsController } from "./app-subagents.js";
+import { palette } from "../app-model.js";
+import { SidebarSectionHeader } from "../app-sidebar-section-header.js";
+import { SIDEBAR_CONTENT_WIDTH } from "../app-sidebar-layout.js";
+import { truncateDisplay } from "../app-terminal-width.js";
+import type { SubagentItem, SubagentsController } from "../app-subagents.js";
 
 const h = React.createElement;
 type ClickEvent = { stopPropagation(): void };
@@ -27,7 +27,8 @@ export function SubagentsSection({
   const { height } = useTerminalDimensions();
   const { directory, selected } = controller;
   const labels = copy.sidebar.subagents;
-  const items = [...directory.running, ...(endedOpen ? directory.ended.items : [])];
+  const items = [...directory.running, ...(endedOpen ? directory.ended.items : [])].sort((left, right) =>
+    left.agentPath && right.agentPath ? left.agentPath.localeCompare(right.agentPath) : 0);
   const contentHeight =
     items.length * 2 +
     (directory.ended.total ? 1 : 0) +
@@ -85,7 +86,7 @@ export function SubagentsSection({
                   },
                 },
                 truncateDisplay(
-                  `${selected?.childSessionId === item.childSessionId ? "›" : "·"} ${item.title}`,
+                  `${selected?.childSessionId === item.childSessionId ? "›" : "·"} ${item.agentPath ?? item.title}`,
                   SIDEBAR_CONTENT_WIDTH - 1,
                 ),
               ),
@@ -117,7 +118,7 @@ export function SubagentsSection({
                   },
                   style: { fg: palette.muted, height: 1 },
                 },
-                `${endedOpen ? "▼" : "▶"} ${labels.ended(directory.ended.total)}`,
+                `${endedOpen ? "-" : "+"} ${labels.ended(directory.ended.total)}`,
               )
             : null,
           endedOpen && directory.ended.nextCursor

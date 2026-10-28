@@ -51,6 +51,7 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
     bashTimeoutPolicy: runtime.config.bashTimeoutPolicy,
     includeSkill: Boolean(runtime.skillPort),
     includeAgent: Boolean(runtime.subagentPort),
+    multiAgentV2: runtime.subagentPort?.multiAgent?.config,
     includeSendMessage: runtime.subagentPort?.sendMessage !== undefined,
     includeRespondToCoordinator:
       runtime.config.taskType === "subagent_child" && Boolean(deps.coordinatorResponsePort),

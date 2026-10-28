@@ -1,124 +1,16 @@
+import { hydrateAgentCommunicationEvents, hydrateRegisteredAgentEvents, withAgentRecipientNames } from "./agent-communication/index.js";
 import {
   SessionEventType,
-  selectActiveConversationBranch,
   type MessageWithParts,
-  type SessionEntryInfo,
   type SessionEvent,
   type SessionGoal,
   type TurnFileChangeSummary,
   type TurnId,
 } from "@zcode/contracts";
-import type { ConversationSnapshot } from "@zcode/shared/zcode-protocol-v4";
 import {
-  goalVerificationEntriesFromSessionEntries,
   synthesizeEventsFromMessages,
   type HydratedGoalVerificationEntry,
 } from "./transcript-hydration.js";
-
-export interface ConversationMaterializationSource {
-  goalVerificationEntries: HydratedGoalVerificationEntry[];
-  memoryEvents: SessionEvent[];
-  messages: MessageWithParts[];
-  /** shared_context 正文仍是 provider-only；这里只下发脱敏的 handover metadata。 */
-  sharedContextImport?: ConversationSnapshot["sharedContextImport"];
-  /** 只有成功读取 session_target 后才存在；显式 null 也是持久 authority。 */
-  target?: SessionGoal | null;
-}
-
-interface PersistedConversationMaterializationStore {
-  getSession(sessionId: import("@zcode/contracts").SessionId): Promise<{
-    title?: string;
-    revert?: {
-      branchCutAfterMessageID?: import("@zcode/contracts").MessageId;
-      branchGeneration?: number;
-      createdMessageID?: import("@zcode/contracts").MessageId;
-      keptMessageIDs?: import("@zcode/contracts").MessageId[];
-      targetMessageID?: import("@zcode/contracts").MessageId;
-    };
-  } | null>;
-  messages(input: { sessionID: import("@zcode/contracts").SessionId }): Promise<MessageWithParts[]>;
-  readTarget(input: {
-    sessionID: import("@zcode/contracts").SessionId;
-  }): Promise<SessionGoal | null>;
-  sessionEntries?(input: {
-    sessionID: import("@zcode/contracts").SessionId;
-    type?: string;
-  }): Promise<SessionEntryInfo[]>;
-}
-
-/**
- * cold materialization 的单一持久事实入口。
- *
- * 旧 bridge 只读取全量 message/part，既没有读取 session.revert 来裁掉
- * 已回滚分支，也没有读取 session_target；结果 runtime resume / stable fork 已经使用
- * active branch，而刷新 projection 却会复活旧分支并把 goal 恢复成 null。
- */
-export async function loadPersistedConversationMaterialization(input: {
-  memoryEvents: readonly SessionEvent[];
-  persistedMessages?: MessageWithParts[];
-  sessionId: string;
-  store?: PersistedConversationMaterializationStore;
-}): Promise<ConversationMaterializationSource> {
-  if (!input.store) {
-    // 无 sessionStore 时旧 bridge 人工填 target:null，把“没有读取”误当成
-    // “持久层明确清空”，进而压掉唯一的内存 TargetChanged 并强制 synthesized。
-    return {
-      goalVerificationEntries: [],
-      memoryEvents: [...input.memoryEvents],
-      messages: [],
-    };
-  }
-  const sessionID = input.sessionId as import("@zcode/contracts").SessionId;
-  const [session, allMessages, target, entries] = await Promise.all([
-    input.store.getSession(sessionID),
-    input.persistedMessages ?? input.store.messages({ sessionID }),
-    input.store.readTarget({ sessionID }),
-    input.store.sessionEntries ? input.store.sessionEntries({ sessionID }) : Promise.resolve([]),
-  ]);
-  const messages = selectActiveConversationBranch(allMessages, {
-    branchCutAfterMessageId: session?.revert?.branchCutAfterMessageID,
-    rewindCreatedMessageId: session?.revert?.createdMessageID,
-    rewindKeptMessageIds: session?.revert?.keptMessageIDs,
-    rewindTargetMessageId: session?.revert?.targetMessageID,
-  });
-  const sharedContextMessage = messages.find(
-    (message) =>
-      message.info.role === "user" &&
-      message.info.source === "shared_context" &&
-      message.info.semantics?.origin === "import" &&
-      message.info.semantics?.kind === "shared_context",
-  );
-  const sharedContextEntry = entries.find((entry) => entry.type === "v4/shared_context_import");
-  const sharedContextData =
-    sharedContextEntry?.data && typeof sharedContextEntry.data === "object"
-      ? (sharedContextEntry.data as Record<string, unknown>)
-      : undefined;
-  const contextId =
-    typeof sharedContextData?.contextId === "string" ? sharedContextData.contextId : undefined;
-  const shareUrl =
-    typeof sharedContextData?.shareUrl === "string" ? sharedContextData.shareUrl : undefined;
-  const status = sharedContextData?.status;
-  const sharedContextImport =
-    sharedContextMessage && session?.title?.trim()
-      ? contextId &&
-        shareUrl &&
-        ["pending", "reserved", "attached", "discarded"].includes(String(status))
-        ? {
-            contextId,
-            title: session.title.trim(),
-            shareUrl,
-            status: status as "pending" | "reserved" | "attached" | "discarded",
-          }
-        : { title: session.title.trim() }
-      : undefined;
-  return {
-    goalVerificationEntries: goalVerificationEntriesFromSessionEntries(entries),
-    memoryEvents: [...input.memoryEvents],
-    messages,
-    ...(sharedContextImport ? { sharedContextImport } : {}),
-    target,
-  };
-}
 
 export interface ColdEventMergeDiagnostic {
   code:
@@ -139,6 +31,7 @@ export interface ColdEventMergeResult {
 }
 
 interface MergeInput {
+  agentNames?: Record<string, string>;
   contextWindow?: number;
   fileChangeSummariesByMessageId?: ReadonlyMap<string, TurnFileChangeSummary>;
   goalVerificationEntries?: readonly HydratedGoalVerificationEntry[];
@@ -744,12 +637,13 @@ export function mergeColdConversationEvents(input: MergeInput): ColdEventMergeRe
   const durableGoalEntries = (input.goalVerificationEntries ?? []).filter(
     (entry) => !entry.payload.anchorTurnId || !authorityTurnIds.has(entry.payload.anchorTurnId),
   );
-  const transcriptEvents = synthesizeEventsFromMessages(durableMessages, {
+  const namedMessages = withAgentRecipientNames(durableMessages, input.agentNames);
+  const transcriptEvents = hydrateRegisteredAgentEvents(synthesizeEventsFromMessages(namedMessages, {
     sessionId: input.sessionId,
     contextWindow: input.contextWindow,
     fileChangeSummariesByMessageId: input.fileChangeSummariesByMessageId,
     goalVerificationEntries: durableGoalEntries,
-  });
+  }), namedMessages);
   const durableEvents = input.target
     ? [
         ...transcriptEvents.slice(0, 1),
@@ -893,6 +787,14 @@ export function mergeColdConversationEvents(input: MergeInput): ColdEventMergeRe
       supplements.push(event);
       return;
     }
+    const treeProjection = event.payload as { agentPath?: unknown; multiAgentTreeProjection?: unknown; multiAgentRootProjection?: unknown } | null;
+    if ((event.type === SessionEventType.SubagentSpawned || event.type === SessionEventType.SubagentMessage || event.type === SessionEventType.SubagentStopped)
+      && (typeof treeProjection?.agentPath === "string" || treeProjection?.multiAgentTreeProjection === true || treeProjection?.multiAgentRootProjection === true)) {
+      // 祖先状态投影没有所属祖先的用户轮次，也不会在该会话的 tool transcript 中出现。
+      // 当作普通 transcript-derived 事件删除，会让首次打开的套娃详情永久漏掉更深后代。
+      supplements.push(event);
+      return;
+    }
     if (TRANSCRIPT_DERIVED_EVENT_TYPES.has(event.type)) {
       recordDiagnostic(diagnostics, "cold_merge.durable_event_suppressed", event);
       return;
@@ -905,14 +807,15 @@ export function mergeColdConversationEvents(input: MergeInput): ColdEventMergeRe
 
   return {
     diagnostics: [...diagnostics.values()],
-    events: resequence(
-      insertAtDurableTurnBoundaries({
+    events: resequence(hydrateAgentCommunicationEvents({
+      messages: input.messages, agentNames: input.agentNames, sessionId: input.sessionId,
+      events: insertAtDurableTurnBoundaries({
         durableEvents,
         trailingEvents: supplements,
         turnPrefixEvents: prefixEventsByTurnId,
         turnTailEvents: boundaryEventsByTurnId,
       }),
-    ),
+    })),
     usedDurableTranscript:
       durableMessages.length > 0 || durableGoalEntries.length > 0 || hasPersistedTargetAuthority,
   };

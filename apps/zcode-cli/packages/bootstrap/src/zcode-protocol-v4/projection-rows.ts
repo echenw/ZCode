@@ -25,6 +25,58 @@ export interface RowBaseInput {
   createdAtSeq: number;
 }
 
+/** 只解析有运行时来源标记的邮箱 carrier，用户粘贴同样文本不能冒充代理来信。 */
+export function agentMessageFromInput(
+  text: string,
+  presentation: string | undefined,
+): UserInputRow["agentMessage"] | undefined {
+  if (
+    presentation !== "coordinator_steer" &&
+    presentation !== "subagent_reply_steer" &&
+    presentation !== "subagent_reply"
+  )
+    return undefined;
+  const split = text.indexOf("\nPayload:\n");
+  if (split < 0) return undefined;
+  const fields = new Map(
+    text
+      .slice(0, split)
+      .split("\n")
+      .map((line) => {
+        const colon = line.indexOf(": ");
+        return [line.slice(0, colon), line.slice(colon + 2)] as const;
+      }),
+  );
+  const messageType = fields.get("Message Type");
+  const senderPath = fields.get("Sender");
+  const targetPath = fields.get("Task name");
+  if (
+    (messageType !== "MESSAGE" && messageType !== "NEW_TASK" && messageType !== "FINAL_ANSWER") ||
+    !senderPath || !/^\/root(?:\/|$)/.test(senderPath) ||
+    !targetPath
+  )
+    return undefined;
+  let body = text.slice(split + "\nPayload:\n".length);
+  // legacy 完成通知的 envelope 仍给模型原文；视图只提取宿主生成的 result，避免 XML/ID 占满摘要。
+  if (messageType === "FINAL_ANSWER" && body.startsWith("<task-notification>")) {
+    const result = /<result>([\s\S]*?)<\/result>/.exec(body)?.[1]
+      ?? /<error>([\s\S]*?)<\/error>/.exec(body)?.[1]
+      ?? /<summary>([\s\S]*?)<\/summary>/.exec(body)?.[1];
+    if (result !== undefined) {
+      const entities: Record<string, string> = { lt: "<", gt: ">", amp: "&", apos: "'", quot: '"' };
+      body = result.replace(/&(lt|gt|amp|apos|quot);/g, (_match, entity: string) => entities[entity]!);
+    }
+  }
+  return {
+    messageType,
+    senderPath,
+    targetPath,
+    body,
+    ...(fields.get("Sender name") ? { senderName: fields.get("Sender name") } : {}),
+    ...(fields.get("Recipient name") ? { targetName: fields.get("Recipient name") } : {}),
+  };
+}
+
 // inputSource → turnHeader.origin（10 §4.4.2）。
 export function mapTurnHeaderOrigin(
   source: SyntheticUserMessageSource | undefined,

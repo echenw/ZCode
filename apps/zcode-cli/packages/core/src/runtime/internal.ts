@@ -126,6 +126,8 @@ export interface AgentRuntimeInternal
   dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
   modelCatalogPort?: ModelCatalogPort;
   runtimeTaskRegistry: RuntimeTaskRegistry;
+  multiAgentRegistry?: RuntimeTaskRegistry;
+  multiAgentPersistence?: import("../multi-agent/index.js").MultiAgentPersistence;
   /**
    * 「run 还欠着决定、主代理闲着」的提醒钟（methods/dynamic-workflow-blocked-reminder.ts）。真实 runtime 上
    * 恒在场；可选只为让手写的局部 runtime 桩不必带它。

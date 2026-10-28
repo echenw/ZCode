@@ -1,3 +1,4 @@
+import { assertMultiAgentTokenBudget } from "../../multi-agent/index.js";
 import type { ToolSearchExecutionContext } from "@zcode/contracts";
 import { getTurnTools } from "./turn-tool-visibility.js";
 import { isOffPeakUserTakeover, refreshOffPeakTurnAfterTakeover } from "../off-peak/turn.js";
@@ -154,6 +155,7 @@ async function runModelBackedTurnStepImpl(
   },
   assistantMessageId: MessageId,
 ): Promise<ModelStepResult> {
+  assertMultiAgentTokenBudget(this.multiAgentRegistry, this.config.multiAgentIdentity, this.config.multiAgentV2);
   const model = state.model;
   const modelStepIndex = state.modelStepCount;
   const modelStartedAt = Date.now();
@@ -672,9 +674,9 @@ async function runModelBackedTurnStepImpl(
     querySource === "main_turn" ? recordMainTurnCacheHitUsage(this, result.usage) : undefined;
   // subagent 的文件 checkpoint 已经持久化，但旧 gate 只允许 main_turn 把
   // 汇总写入 ModelComplete，导致 child 详情无法从权威事件恢复摘要和撤销入口。
-  const supportsTurnFileChanges = querySource === "main_turn" || querySource === "subagent";
+  const supportsSessionTurn = querySource === "main_turn" || querySource === "subagent";
   const fileChanges =
-    supportsTurnFileChanges && toolCalls.length === 0
+    supportsSessionTurn && toolCalls.length === 0
       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
       : undefined;
   const modelCompleteEvent = this.createEvent(
@@ -682,9 +684,8 @@ async function runModelBackedTurnStepImpl(
     {
       content: state.modelResponse,
       // 桌面 continuous 实时事件只携带当前 model_complete payload。
-      // 如果主轮次只发 usage 不发 contextWindow，旧 task stream 无法生成 usage_update，
-      // 长程任务中输入栏会拿不到 context meter 的 size 而隐藏。
-      ...(querySource === "main_turn" && executionContextWindow !== undefined
+      // 主/子会话自己的执行轮都须携带容量；只发 usage 会让子详情输入栏始终缺少分母。
+      ...(supportsSessionTurn && executionContextWindow !== undefined
         ? { contextWindow: executionContextWindow }
         : {}),
       querySource,
@@ -692,7 +693,7 @@ async function runModelBackedTurnStepImpl(
       usage: result.usage,
       ...(cacheHit ? { cacheHit } : {}),
       ...(fileChanges ? { fileChanges } : {}),
-      ...(querySource === "main_turn" && result.contextUsageBreakdown
+      ...(supportsSessionTurn && result.contextUsageBreakdown
         ? { contextUsageBreakdown: result.contextUsageBreakdown }
         : {}),
       toolCallCount: toolCalls.length,

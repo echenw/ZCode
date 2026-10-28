@@ -2,12 +2,15 @@ import { SessionEventType, traceContextToLogContext } from "../deps.js";
 import type {
   BackgroundExecutionSnapshot,
   BackgroundTaskCancelResult,
+  BackgroundTaskCancelOptions,
+  BackgroundTaskCancelOutcome,
   BackgroundTaskInfo,
   BackgroundTaskInfoStatus,
   TraceContext,
 } from "../deps.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import { stopDynamicWorkflowBackgroundTask } from "./background-stop-dynamic-workflow.js";
+import { multiAgentRootId } from "../../multi-agent/index.js";
 import type {
   RuntimeBackgroundStopOptions,
   RuntimeBackgroundStopResult,
@@ -15,10 +18,7 @@ import type {
   RuntimeBackgroundStopTarget,
   TypedRuntimeBackgroundStopTarget,
 } from "./background-stop-types.js";
-import type {
-  RuntimeTaskSnapshot,
-  RuntimeTaskType,
-} from "../../runtime-task/registry.js";
+import type { RuntimeTaskSnapshot, RuntimeTaskType } from "../../runtime-task/registry.js";
 import {
   hasRunningBackgroundRuntimeTask,
   isTerminalRuntimeTask,
@@ -45,8 +45,11 @@ export function hasRunningBackgroundTasks(this: AgentRuntimeInternal): boolean {
 export async function cancelBackgroundTask(
   this: AgentRuntimeInternal,
   taskId: string,
-  options: { traceContext?: TraceContext } = {},
+  options: BackgroundTaskCancelOptions = {},
 ): Promise<BackgroundTaskCancelResult> {
+  if (options.scope && options.scope !== "task") {
+    return cancelAgentScope.call(this, taskId, options.scope);
+  }
   // cancelBackgroundTask 只有 GUI 与后台面板会调（v4 cancelBackgroundWork）：这就是用户的手。
   const result = await this.stopBackgroundTask(taskId, {
     initiator: "user",
@@ -68,6 +71,87 @@ export async function cancelBackgroundTask(
     snapshot: projection.backgroundTasks.find((task) => task.taskId === taskId),
     status,
     taskId,
+  };
+}
+
+async function cancelAgentScope(
+  this: AgentRuntimeInternal,
+  taskId: string,
+  scope: "subtree" | "tree",
+): Promise<BackgroundTaskCancelResult> {
+  const identity = this.config.multiAgentIdentity;
+  const owner = this.multiAgentRegistry;
+  const anchor = owner?.get(taskId);
+  if (
+    !identity ||
+    !owner ||
+    !anchor?.multiAgent ||
+    anchor.multiAgent.rootSessionId !== identity.rootSessionId
+  ) {
+    return { taskId, scope, cancelled: false, status: "lost", reason: "background_task_not_found" };
+  }
+  if (
+    !this.subagentPort?.stopTask ||
+    (scope === "tree" && identity.agentPath !== "/root") ||
+    (scope === "subtree" && anchor.multiAgent.agentPath === "/root")
+  ) {
+    return {
+      taskId,
+      scope,
+      cancelled: false,
+      status: toBackgroundTaskInfoStatus(anchor.status) ?? "lost",
+      reason: "background_task_cancel_not_supported",
+    };
+  }
+  const anchorPath = anchor.multiAgent.agentPath;
+  const selected = Object.values(owner.all()).filter(
+    (task) =>
+      task.type === "local_agent" &&
+      task.multiAgent?.rootSessionId === identity.rootSessionId &&
+      task.multiAgent.agentPath !== "/root" &&
+      (scope === "tree" ||
+        task.multiAgent.agentPath === anchorPath ||
+        task.multiAgent.agentPath.startsWith(`${anchorPath}/`)) &&
+      !isTerminalRuntimeTask(task),
+  );
+  // 先向所有现有执行发出原 Owner 的同步中断，再等待文件结算；不能逐个 await 留出继续派生的窗口。
+  // 普通 Main Stop 不走此入口。显式整树停止同时中断当前 Root 执行，保留会话和身份。
+  const rootStop =
+    scope === "tree"
+      ? this.stopActiveForegroundExecution({ reason: "Explicit multi-agent tree stop" })
+      : undefined;
+  const pending = selected.map((task) => this.subagentPort!.stopTask!(task.taskId));
+  const settled = await Promise.allSettled(pending);
+  const tasks: BackgroundTaskCancelOutcome[] = settled.map((outcome, index) => {
+    const id = selected[index]!.taskId;
+    const snapshot = outcome.status === "fulfilled" ? outcome.value : undefined;
+    const status = toBackgroundTaskInfoStatus(snapshot?.status ?? owner.get(id)?.status) ?? "lost";
+    return {
+      taskId: id,
+      status,
+      cancelled: snapshot !== undefined && status === "cancelled",
+      ...(outcome.status === "rejected" || !snapshot || !isTerminalRuntimeTask(snapshot)
+        ? { reason: "background_task_cancel_failed" }
+        : {}),
+    };
+  });
+  // Root 的真实中断也必须进入回执，否则只有 Main 在运行时会被错误报告为没有取消。
+  if (rootStop?.kind === "stopped") {
+    tasks.push({
+      taskId: multiAgentRootId(identity.rootSessionId),
+      status: "cancelled",
+      cancelled: true,
+    });
+  }
+  // 选择后自然完成的任务是合法终态，不应因无需取消而被标成部分失败。
+  const failed = tasks.some((task) => task.reason !== undefined);
+  return {
+    taskId,
+    scope,
+    tasks,
+    cancelled: tasks.some((task) => task.cancelled),
+    status: toBackgroundTaskInfoStatus(owner.get(taskId)?.status) ?? "lost",
+    ...(failed ? { reason: "background_task_cancel_partial" } : {}),
   };
 }
 
@@ -299,9 +383,7 @@ export async function cancelRunningRuntimeBackgroundTasks(
   const traceContext = input.traceContext ?? this.rootTraceContext;
   const tasks = Object.values(this.runtimeTaskRegistry.all()).filter(
     (task) =>
-      task.type === "local_bash" &&
-      task.isBackgrounded === true &&
-      task.status === "running",
+      task.type === "local_bash" && task.isBackgrounded === true && task.status === "running",
   );
 
   for (const task of tasks) {
@@ -396,8 +478,7 @@ export function buildBackgroundTaskPayload(
 function backgroundInfoFromRuntimeTask(task: RuntimeTaskSnapshot): BackgroundTaskInfo {
   return {
     taskId: task.taskId,
-    toolCallId:
-      typeof task.parentToolCallId === "string" ? task.parentToolCallId : undefined,
+    toolCallId: typeof task.parentToolCallId === "string" ? task.parentToolCallId : undefined,
     toolName: toolNameFromRuntimeTaskType(task.type),
     cancellable: task.status === "running",
     command: commandFromRuntimeTask(task, undefined),
@@ -457,9 +538,7 @@ function toolNameFromRuntimeTaskType(type: RuntimeTaskType): string {
   }
 }
 
-function isTerminalBackgroundTaskInfoStatus(
-  status: BackgroundTaskInfoStatus | undefined,
-): boolean {
+function isTerminalBackgroundTaskInfoStatus(status: BackgroundTaskInfoStatus | undefined): boolean {
   return Boolean(status && status !== "running");
 }
 

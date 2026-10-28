@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { multiAgentToolName, type ModelRequest } from "@zcode/contracts";
+import type { AgentRuntimeInternal } from "../src/runtime/internal.js";
+import { createMultiAgentToolEntries } from "../src/multi-agent/handler.js";
+import { createRecordingSubagentSessionStore } from "./subagent-test-store.js";
 import { createTestModelSelection } from "./test-model-selection.js";
 import {
   createModelId,
@@ -684,5 +691,94 @@ describe("subagent provider-visible prompt assembly", () => {
       );
       expect(allMessageText(request)).not.toContain("# ZCode Desktop Context");
     }
+  });
+});
+
+
+describe("Multi-Agent V2 subagent role assembly", () => {
+  const envInfo = { cwd: "/workspace", platform: "darwin", shell: "zsh", osVersion: "test", nodeVersion: "24" };
+  const config = {
+    agentPrompt: "Read-only specialist sentinel.",
+    envInfo,
+    multiAgent: { agentPath: "/root/research/verify", parentPath: "/root/research", rootSessionId: "tree-session", toolNamespace: "collaboration", delegationMode: "explicit" as const },
+    guidanceToolNames: ["Read", "collaboration.send_message", "collaboration.list_agents"],
+  };
+
+  it("preserves the profile and uses actual child tool permissions", () => {
+    const result = createSubagentContextBuilder(config).build();
+    const rendered = result.systemMessages.map((message) => String(message.content)).join("\n");
+    expect(rendered).toContain("Read-only specialist sentinel.");
+    expect(rendered).toContain("Task path: /root/research/verify");
+    expect(rendered).toContain("Parent path: /root/research");
+    expect(rendered).toContain("collaboration.send_message");
+    expect(rendered).not.toContain("spawn_agent");
+    expect(rendered).toContain("FINAL_ANSWER");
+  });
+
+  it("keeps dynamic paths out of the cached stable child body", () => {
+    const result = createSubagentContextBuilder(config).build();
+    const stable = result.sections.filter((section) => section.cacheHint === "stable").map((section) => section.content).join("\n");
+    expect(stable).not.toContain("/root/research/verify");
+    expect(result.systemMessages).toHaveLength(3);
+    expect(String(result.systemMessages[1]?.content)).not.toContain("/root/research/verify");
+    expect(String(result.systemMessages[2]?.content)).toContain("/root/research/verify");
+  });
+
+  it("retains the original two-block layout when V2 is not enabled", () => {
+    const result = createSubagentContextBuilder({ agentPrompt: config.agentPrompt, envInfo }).build();
+    expect(result.systemMessages).toHaveLength(2);
+    expect(result.sections.some((section) => section.source === "multi_agent_rules")).toBe(false);
+  });
+});
+
+describe("V2 configured developer guidance through production child requests", () => {
+  it("adds generic usage guidance only to spawn and ignores the deprecated flag", () => {
+    const entries = createMultiAgentToolEntries({ enabled: true, usageHintEnabled: false, usageHintText: "SPAWN_USAGE_SENTINEL" });
+    expect(entries).toHaveLength(6);
+    expect(entries.find((entry) => entry.metadata.name === multiAgentToolName("spawn_agent"))?.metadata.description).toContain("SPAWN_USAGE_SENTINEL");
+    expect(entries.filter((entry) => entry.metadata.name !== multiAgentToolName("spawn_agent")).every((entry) => !entry.metadata.description.includes("SPAWN_USAGE_SENTINEL"))).toBe(true);
+  });
+
+  it.each([
+    { label: "inherit", override: undefined, specialized: false, expected: "PARENT_DEVELOPER_SENTINEL" },
+    { label: "override", override: "  CHILD_DEVELOPER_SENTINEL  ", specialized: false, expected: "CHILD_DEVELOPER_SENTINEL" },
+    { label: "empty", override: "  ", specialized: false, expected: undefined },
+    { label: "role", override: "CHILD_DEVELOPER_SENTINEL", specialized: true, expected: "SPECIALIZED_ROLE_SENTINEL" },
+  ])("resolves $label guidance without replacing the active profile", async ({ override, specialized, expected }) => {
+    const directory = await mkdtemp(join(tmpdir(), "zcode-v2-developer-"));
+    const requests: ModelRequest[] = []; let rootCalls = 0;
+    const runtime = createTestAgentRuntime(createSessionId(), {
+      workingDirectory: directory, mode: "yolo", modelStreaming: "off", compact: { enabled: false }, titleGeneration: { enabled: false },
+      systemPrompt: "PARENT_DEVELOPER_SENTINEL",
+      multiAgentV2: { enabled: true, subagentDeveloperInstructions: override,
+        rootAgentUsageHintText: "ROOT_ROLE_HINT", subagentUsageHintText: "CHILD_ROLE_HINT" },
+      subagents: { outputRootDir: directory, profiles: [{ name: "specialist", source: "user", description: "specialist",
+        systemPrompt: "SPECIALIZED_ROLE_SENTINEL", tools: ["*"] }] },
+    }, { eventStore: createTestSessionEventStore(), sessionStore: createRecordingSubagentSessionStore(),
+      modelFactory: createTestModelFactory({ async generateText(request, observation) {
+        if (observation.invocationContext?.metadata?.querySource === "subagent") {
+          requests.push(request);
+          return { finishReason: "stop", text: "child complete", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+        }
+        rootCalls++;
+        if (rootCalls === 1) return { finishReason: "tool-calls", text: "", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          toolCalls: [{ id: "spawn_guidance", name: multiAgentToolName("spawn_agent"), input: { task_name: "worker", message: "Review the delegated task.", fork_turns: "none", ...(specialized ? { agent_type: "specialist" } : {}) } }] };
+        return { finishReason: "stop", text: "parent complete", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+      } }),
+    });
+    try {
+      await runtime.executeTurn("Delegate this task to a child.");
+      await vi.waitFor(() => {
+        expect(requests).toHaveLength(1);
+        const tasks = Object.values((runtime as unknown as AgentRuntimeInternal).multiAgentRegistry!.all()).filter((task) => task.multiAgent);
+        expect(tasks.every((task) => task.status === "completed")).toBe(true);
+      });
+      const systems = requests[0]!.messages.filter((message) => message.role === "system").map((message) => modelMessageContentToText(message.content)).join("\n");
+      if (expected) expect(systems).toContain(expected);
+      expect(systems).toContain("CHILD_ROLE_HINT"); expect(systems).not.toContain("ROOT_ROLE_HINT");
+      expect(systems).toContain("Task path: /root/worker"); expect(systems).toContain("current permissions");
+      if (override !== undefined) expect(systems).not.toContain("PARENT_DEVELOPER_SENTINEL");
+      if (specialized || expected === undefined) expect(systems).not.toContain("CHILD_DEVELOPER_SENTINEL");
+    } finally { runtime.beginShutdown(); await rm(directory, { recursive: true, force: true }); }
   });
 });

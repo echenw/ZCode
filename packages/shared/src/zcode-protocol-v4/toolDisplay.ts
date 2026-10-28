@@ -41,6 +41,7 @@ export const toolResultDisplaySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("local_agent_message"),
+    recipientName: z.string().optional(),
     status: z.enum(["success", "failed"]),
     error: z.string().optional(),
     message: z.string().optional(),

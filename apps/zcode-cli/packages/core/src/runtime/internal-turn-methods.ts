@@ -6,6 +6,7 @@ import type {
   CompactTimelineStatus,
   CompactTrigger,
   BackgroundExecutionSnapshot,
+  BackgroundTaskCancelOptions,
   BackgroundTaskCancelResult,
   BackgroundTaskInfo,
   BackgroundTaskInfoStatus,
@@ -251,7 +252,7 @@ export interface AgentRuntimeTurnMethods {
   readBackgroundBashOutput(workId: string, sessionId?: string): Promise<BackgroundBashOutputResult>;
   cancelBackgroundTask(
     taskId: string,
-    options?: { traceContext?: TraceContext },
+    options?: BackgroundTaskCancelOptions,
   ): Promise<BackgroundTaskCancelResult>;
   stopBackgroundTask(
     taskId: string,

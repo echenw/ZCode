@@ -18,6 +18,28 @@ import { createTestModelFormatProperties } from "./test-runtime-model.js";
 import { createTestModelFactory } from "./test-runtime-model.js";
 
 describe("Agent Runtime Model lifecycle", () => {
+  it("publishes the child model context window with its own subagent usage", async () => {
+    const eventStore = createTestSessionEventStore();
+    const runtime = createTestAgentRuntime(createSessionId("child-context-window"), {
+      taskType: "subagent_child", modelStreaming: "off",
+    }, {
+      eventStore,
+      modelFactory: createTestModelFactory({
+        properties: { contextWindow: 960000 },
+        async generateText() {
+          return { finishReason: "stop", text: "done", toolCalls: [],
+            usage: { inputTokens: 1234, outputTokens: 10, totalTokens: 1244 } };
+        },
+      }),
+    });
+    await runtime.executeTurn("report child context");
+    const completed = (await eventStore.getEvents(runtime.sessionId)).find(
+      (event) => event.type === SessionEventType.ModelComplete,
+    );
+    expect(completed?.payload).toMatchObject({ querySource: "subagent", contextWindow: 960000 });
+    expect((await runtime.getProjection()).contextUsed).toBeGreaterThan(0);
+  });
+
   it("does not fall back to the Adapter when the explicit ModelFactory is unavailable", async () => {
     const eventStore = createTestSessionEventStore();
     const modelSelection = createTestModelSelection("test/adapter-only-model");

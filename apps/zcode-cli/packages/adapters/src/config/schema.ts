@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- zcode-cli 配置 schema 需要集中维护文件解析和 provider 继承，拆散会让配置语义更难对齐。 */
 import { z } from "zod";
-import type { RuntimeConfigPatch } from "@zcode/contracts";
+import { resolveMultiAgentWaitTimeouts, type RuntimeConfigPatch } from "@zcode/contracts";
 
 const stringRecordSchema = z.record(z.string(), z.string());
 const unknownRecordSchema = z.record(z.string(), z.unknown());
@@ -37,6 +37,33 @@ const featuresSchema = z.object({
   memory: z.boolean().optional(),
   skill: z.boolean().optional(),
   mcp: z.boolean().optional(),
+});
+
+const multiAgentV2Schema = z.object({
+  enabled: z.boolean().optional(),
+  toolNamespace: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  maxConcurrentThreadsPerSession: positiveIntegerSchema.optional(),
+  maxResidentAgents: positiveIntegerSchema.optional(),
+  disableNativeTools: z.boolean().optional(),
+  disableDirectMessage: z.boolean().optional(),
+  waitAgentEnabled: z.boolean().optional(),
+  minWaitTimeoutMs: z.number().int().min(0).max(3_600_000).optional(),
+  maxWaitTimeoutMs: z.number().int().min(0).max(3_600_000).optional(),
+  defaultWaitTimeoutMs: z.number().int().min(0).max(3_600_000).optional(),
+  usageHintEnabled: z.boolean().optional(),
+  usageHintText: z.string().optional(),
+  rootAgentUsageHintText: z.string().optional(),
+  subagentUsageHintText: z.string().optional(),
+  subagentDeveloperInstructions: z.string().transform((text) => text.trim()).optional(),
+  multiAgentModeHintText: z.string().optional(),
+  exposeSpawnAgentModelOverrides: z.boolean().optional(),
+  hideSpawnAgentMetadata: z.boolean().optional(),
+  preserveForkPrefix: z.boolean().optional(),
+  delegationMode: z.enum(["explicit", "proactive"]).optional(),
+  tokenBudget: positiveIntegerSchema.optional(),
+}).strict().superRefine((config, context) => {
+  try { resolveMultiAgentWaitTimeouts(config); }
+  catch (error) { context.addIssue({ code: "custom", message: error instanceof Error ? error.message : "Invalid multi-agent wait settings" }); }
 });
 
 const memorySchema = z.object({
@@ -292,6 +319,7 @@ export const ZCodeConfigFileSchema = z
     storage: storageSchema.optional(),
     network: networkSchema.optional(),
     features: featuresSchema.optional(),
+    multiAgentV2: multiAgentV2Schema.optional(),
     memory: memorySchema.optional(),
     mcp: mcpSchema.optional(),
     plugins: pluginsSchema.optional(),
@@ -404,6 +432,7 @@ function parsedConfigFileToRuntimePatch(parsed: ZCodeConfigFile): RuntimeConfigP
   if (parsed.storage) config.storage = parsed.storage;
   if (parsed.network) config.network = parsed.network;
   if (parsed.features) config.features = parsed.features;
+  if (parsed.multiAgentV2) config.multiAgentV2 = parsed.multiAgentV2;
   if (parsed.memory) config.memory = parsed.memory;
   if (parsed.mcp) config.mcp = parsed.mcp;
   if (parsed.plugins) config.plugins = normalizePluginConfig(parsed.plugins);

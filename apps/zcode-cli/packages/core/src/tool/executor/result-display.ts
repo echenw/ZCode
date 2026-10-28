@@ -8,6 +8,7 @@ import {
   nodeReplCuaAppDisplaySchema,
   ZCODE_MCP_NODE_REPL_CUA_APP_META_KEY,
   SEND_MESSAGE_TOOL_NAME,
+  MultiAgentOutputSchema,
   SendMessageOutputSchema,
   TASK_OUTPUT_DISPLAY_MAX_OUTPUT_CHARS,
   TASK_OUTPUT_DISPLAY_MAX_STATUS_CHARS,
@@ -177,6 +178,7 @@ export function createToolResultDisplay(
   output: unknown,
   options?: {
     officialCua?: boolean;
+    multiAgentOperation?: import("@zcode/contracts").MultiAgentOperation;
     mcp?: McpToolDisplayMetadata;
   },
 ): ToolResultDisplayPayload | undefined {
@@ -201,6 +203,13 @@ export function createToolResultDisplay(
     return createMcpToolDisplay(options.mcp, output);
   }
 
+  if (options?.multiAgentOperation === "send_message" || options?.multiAgentOperation === "followup_task") {
+    const parsed = MultiAgentOutputSchema.safeParse(output);
+    if (!parsed.success) return undefined;
+    return { kind: "local_agent_message", status: "success",
+      ...(parsed.data.nickname ? { recipientName: boundDisplayText(parsed.data.nickname, MAX_SEND_MESSAGE_DISPLAY_FIELD_BYTES).value } : {}) };
+  }
+
   if (toolName === SEND_MESSAGE_TOOL_NAME) {
     const parsed = SendMessageOutputSchema.safeParse(output);
     if (!parsed.success) return undefined;
@@ -216,6 +225,7 @@ export function createToolResultDisplay(
     return {
       kind: "local_agent_message",
       status: parsed.data.status,
+      ...(parsed.data.recipientName ? { recipientName: boundDisplayText(parsed.data.recipientName, MAX_SEND_MESSAGE_DISPLAY_FIELD_BYTES).value } : {}),
       ...(error !== undefined ? { error } : {}),
       ...(message !== undefined ? { message } : {}),
     };

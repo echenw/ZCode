@@ -155,6 +155,7 @@ import {
   mapGoalStatus,
   mapTurnResultToHeaderState,
 } from "./projection-rows.js";
+import { agentMessageFromInput } from "./projection-rows.js";
 import {
   HYDRATION_TRACE_ID,
   computeAvailability,
@@ -3186,7 +3187,8 @@ export class ProductProjection {
     );
     const row = this.findToolRow(String(payload.toolCallId));
     if (!row) return [];
-    return projectToolActivity(event, row);
+    return projectToolActivity(event, payload.multiAgentOperation
+      ? { ...row, multiAgentOperation: payload.multiAgentOperation } : row);
   }
 
   /**
@@ -3836,7 +3838,7 @@ export class ProductProjection {
     // drain 事实优先自带文本/messageId（drainedInputs），
     // 投影不再依赖内存 queue 状态取文本——旧实现查不到 queue item 就静默 continue，
     // 用户输入从 queue 消失后也不进 history。旧事件（无 drainedInputs）回退查表。
-    const items =
+    const items: NonNullable<TurnSteerDrainedPayload["drainedInputs"]> =
       payload.drainedInputs ??
       payload.pendingInputIds.flatMap((pendingInputId, index) => {
         const queueItem = this.snapshot.queue.items.find(
@@ -3893,6 +3895,10 @@ export class ProductProjection {
       const productTurnId = this.turnIdOf(event);
       const rootSourceCommandId =
         item.intent?.provenance?.sourceCommandId ?? item.intent?.sourceCommandId;
+      const parsedAgentMessage = agentMessageFromInput(item.text, item.inputPresentation);
+      const agentMessage = parsedAgentMessage ? { ...parsedAgentMessage,
+        senderName: item.senderName ?? parsedAgentMessage.senderName,
+        targetName: item.targetName ?? parsedAgentMessage.targetName } : undefined;
       const row = {
         ...this.rowBase(event, productTurnId, entityId),
         kind: "userInput" as const,
@@ -3900,8 +3906,9 @@ export class ProductProjection {
           item.intent?.conversationQuotes || item.intent?.botGroupSource
             ? (item.intent.text ?? item.text)
             : item.text,
-        origin: "realUser" as const,
-        ...(delivery === "guide" ? { guided: true as const } : {}),
+        origin: agentMessage ? ("mailbox" as const) : ("realUser" as const),
+        ...(agentMessage ? { agentMessage } : {}),
+        ...(delivery === "guide" && !agentMessage ? { guided: true as const } : {}),
         ...(item.intent?.sourceCommandId ? { sourceCommandId: item.intent.sourceCommandId } : {}),
         ...(rootSourceCommandId ? { rootSourceCommandId } : {}),
         ...(item.intent?.inputOrigin ? { inputOrigin: item.intent.inputOrigin } : {}),
@@ -3919,7 +3926,7 @@ export class ProductProjection {
       this.registerCanonicalUserRowTarget(
         row.rowId,
         entityId,
-        messageId && item.intent?.kind !== "compact"
+        messageId && !agentMessage && item.intent?.kind !== "compact"
           ? {
               entityId,
               productTurnId,
@@ -3968,7 +3975,7 @@ export class ProductProjection {
             }
           : undefined,
       );
-      if (delivery === "guide") {
+      if (delivery === "guide" && !agentMessage) {
         deltas.push(...this.openGuidedWorkSegment(event, row.entityId ?? item.pendingInputId));
       }
       deltas.push({ op: "row.appended", row });
@@ -4327,6 +4334,14 @@ export class ProductProjection {
       running.push({
         childSessionId,
         agentId: row.entityId,
+        ...(row.agentPath !== undefined ? { agentPath: row.agentPath } : {}),
+        ...(row.parentAgentPath !== undefined ? { parentAgentPath: row.parentAgentPath } : {}),
+        ...(row.parentSessionId !== undefined ? { parentSessionId: row.parentSessionId } : {}),
+        ...(row.rootSessionId !== undefined ? { rootSessionId: row.rootSessionId } : {}),
+        ...(row.modelId !== undefined ? { modelId: row.modelId } : {}),
+        ...(row.providerId !== undefined ? { providerId: row.providerId } : {}),
+        ...(row.reasoningEffort !== undefined ? { reasoningEffort: row.reasoningEffort } : {}),
+        ...(row.totalTokens !== undefined ? { totalTokens: row.totalTokens } : {}),
         ...(row.parentToolCallId ? { toolCallId: row.parentToolCallId } : {}),
         subagentType: row.subagentType,
         title,
@@ -4418,8 +4433,77 @@ export class ProductProjection {
   // schema/UI 已有 subagent row，但旧 reducer 未消费 Subagent* 事件；
   // cold hydration 即使合成事件也无法恢复下钻行。这里让 live/cold 共用同一状态机。
 
+  private subagentIdentityFields(
+    payload: Record<string, unknown>,
+    event: SessionEvent,
+  ): Partial<
+    Pick<
+      SubagentRow,
+      | "nickname"
+      | "agentPath"
+      | "parentAgentPath"
+      | "parentSessionId"
+      | "rootSessionId"
+      | "modelId"
+      | "providerId"
+      | "reasoningEffort"
+      | "totalTokens"
+    >
+  > {
+    const fields: Partial<
+      Pick<
+        SubagentRow,
+        | "nickname"
+      | "agentPath"
+        | "parentAgentPath"
+        | "parentSessionId"
+        | "rootSessionId"
+        | "modelId"
+        | "providerId"
+        | "reasoningEffort"
+        | "totalTokens"
+      >
+    > = {};
+    for (const key of [
+      "nickname",
+      "agentPath",
+      "parentAgentPath",
+      "parentSessionId",
+      "rootSessionId",
+      "modelId",
+      "providerId",
+      "reasoningEffort",
+    ] as const) {
+      const value = this.stringPayload(payload, key);
+      if (value) fields[key] = value;
+    }
+    if (fields.agentPath && !fields.parentSessionId) fields.parentSessionId = event.sessionId;
+    const model = this.stringPayload(payload, "model");
+    const separator = model?.indexOf("/") ?? -1;
+    if (model && separator > 0) {
+      fields.providerId ??= model.slice(0, separator);
+      fields.modelId ??= model.slice(separator + 1);
+    }
+    const usage = payload.multiAgentUsage;
+    const totalTokens =
+      usage && typeof usage === "object" && "totalTokens" in usage
+        ? usage.totalTokens
+        : payload.totalTokens;
+    if (typeof totalTokens === "number" && Number.isSafeInteger(totalTokens) && totalTokens >= 0) {
+      fields.totalTokens = totalTokens;
+    }
+    return fields;
+  }
+
   private onSubagentSpawned(event: SessionEvent): ConversationDelta[] {
     const payload = event.payload as Record<string, unknown>;
+    const nickname = this.stringPayload(payload, "nickname");
+    const description =
+      this.stringPayload(payload, "description") ?? this.stringPayload(payload, "prompt");
+    const displaySummary = nickname
+      ? `${nickname}${description ? ` · ${description}` : ""}`
+      : description;
+    const identity = this.subagentIdentityFields(payload, event);
     const agentId = this.subagentAgentId(payload, event);
     const existing = this.findSubagentLifecycleRow(agentId, payload, event);
     if (existing) this.subagentRowIdByAgentId.set(agentId, existing.rowId);
@@ -4435,25 +4519,25 @@ export class ProductProjection {
       existing?.status === "running" &&
       (!childSessionId || childSessionId === existing.childSessionId) &&
       (!parentToolCallId || parentToolCallId === existing.parentToolCallId) &&
-      (payload.background !== true || existing.backgrounded === true)
+      (payload.background !== true || existing.backgrounded === true) &&
+      Object.entries(identity).every(([key, value]) => existing[key as keyof SubagentRow] === value)
     ) {
       return resumedBackgroundWork ? [resumedBackgroundWork] : [];
     }
     if (existing) {
       const row: SubagentRow = {
         ...existing,
+        ...identity,
         status: "running",
-        summaryText:
-          this.stringPayload(payload, "description") ??
-          this.stringPayload(payload, "prompt") ??
-          existing.summaryText,
+        summaryText: displaySummary ?? existing.summaryText,
         // resume 事件携带的是 SendMessage call id，但 parentToolCallId 是 row 的创建锚点；
         // 已存在的锚点不能作为生命周期字段被覆盖，否则 UI 无法再关联原 Agent 行。
         ...(!existing.parentToolCallId && parentToolCallId ? { parentToolCallId } : {}),
         ...(childSessionId ? { childSessionId } : {}),
         ...(payload.background === true ? { backgrounded: true as const } : {}),
         ...(payload.background === true ? { workId: agentId } : {}),
-        startedAt: this.ms(event),
+        startedAt:
+          existing.status === "running" ? (existing.startedAt ?? this.ms(event)) : this.ms(event),
       };
       delete row.endedAt;
       return [
@@ -4464,13 +4548,14 @@ export class ProductProjection {
     const row: SubagentRow = {
       ...this.rowBase(event, this.turnIdOf(event), agentId),
       kind: "subagent",
+      ...identity,
       ...(this.stringPayload(payload, "parentToolCallId")
         ? { parentToolCallId: this.stringPayload(payload, "parentToolCallId") }
         : {}),
       subagentType: this.stringPayload(payload, "agentType") ?? "subagent",
       status: "running",
       summaryText:
-        this.stringPayload(payload, "description") ??
+        displaySummary ??
         this.stringPayload(payload, "summaryText") ??
         this.stringPayload(payload, "prompt") ??
         "",
@@ -4537,8 +4622,23 @@ export class ProductProjection {
       this.stringPayload(payload, "summaryText") ??
       this.stringPayload(payload, "text") ??
       this.stringPayload(payload, "message");
-    if (!row || !append) return [];
-    return [{ op: "row.delta", rowId: row.rowId, path: "summaryText", append }];
+    if (!row) return [];
+    const identity = this.subagentIdentityFields(payload, event);
+    if (
+      !append &&
+      Object.entries(identity).every(([key, value]) => row[key as keyof SubagentRow] === value)
+    )
+      return [];
+    return [
+      {
+        op: "row.upserted",
+        row: {
+          ...row,
+          ...identity,
+          summaryText: row.summaryText + (append ?? ""),
+        },
+      },
+    ];
   }
 
   private onSubagentStopped(event: SessionEvent): ConversationDelta[] {
@@ -4584,6 +4684,7 @@ export class ProductProjection {
           ...(payload.background === true ? { workId: agentId } : {}),
           endedAt: this.ms(event),
         };
+    Object.assign(row, this.subagentIdentityFields(payload, event));
     this.subagentRowIdByAgentId.set(agentId, row.rowId);
     return [{ op: existing ? "row.upserted" : "row.appended", row }];
   }
@@ -4844,7 +4945,7 @@ export class ProductProjection {
   private onModelComplete(event: SessionEvent): ConversationDelta[] {
     const payload = event.payload as ModelCompletePayload;
     const retryClearDeltas = this.acceptsActiveModelEvent(event) ? this.setApiRetry(null) : [];
-    // 与旧 reducer 同一裁决：只有主会话往返才能覆盖 context 水位。
+    // 主轮判定沿用正文续写规则；子会话自己的 usage 在下方按 session 身份独立准入。
     const isMainTurn =
       payload.querySource !== undefined
         ? payload.querySource === "main_turn"
@@ -4864,8 +4965,10 @@ export class ProductProjection {
         this.outputContinuationTextRowId = lastVisibleRow.rowId;
       }
     }
-    // subagent ModelComplete 的 usage 仍不是主会话水位，但它携带的
-    // fileChanges 是 child session 自己的 workspace 事实，必须独立投影到 child turn header。
+    // 子代理自己的执行轮也有 context 水位；其它 session 的子代理用量不能覆盖当前投影。
+    const ownsSubagentUsage =
+      payload.querySource === "subagent" && event.sessionId === this.snapshot.sessionId;
+    // fileChanges 是 child session 自己的 workspace 事实，独立投影到 child turn header。
     const supportsFileChangeSummary = isMainTurn || payload.querySource === "subagent";
     const usage = payload.usage as ModelUsage;
     const deltas: ConversationDelta[] = [];
@@ -4901,7 +5004,7 @@ export class ProductProjection {
         });
       }
     }
-    if (!isMainTurn) return [...deltas, ...retryClearDeltas];
+    if (!isMainTurn && !ownsSubagentUsage) return [...deltas, ...retryClearDeltas];
     const usedTokens = getModelUsageContextTokens(usage) ?? 0;
     this.contextWindowState.usedTokens = usedTokens;
     const maxTokens = payload.contextWindow ?? this.contextWindowState.maxTokens;
@@ -5778,6 +5881,8 @@ export class ProductProjection {
 
   private mapSubagentStatus(status: string | undefined): SubagentRow["status"] {
     switch (status) {
+      case "lost":
+        return "lost";
       case "completed":
       case "success":
         return "success";

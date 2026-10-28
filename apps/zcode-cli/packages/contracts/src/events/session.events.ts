@@ -591,6 +591,9 @@ export interface TurnSteerDrainedPayload {
     messageId: MessageId;
     text: string;
     delivery?: TurnSteerDeliveryMode;
+    inputPresentation?: RuntimeInputPresentation;
+    senderName?: string;
+    targetName?: string;
     intent?: TurnInputIntentMetadata;
     toolDisallowlist?: readonly string[];
   }>;
@@ -903,6 +906,7 @@ export interface ToolCallScheduledPayload {
 }
 
 export interface ToolCallStartedPayload {
+  multiAgentOperation?: import("../multi-agent/index.js").MultiAgentOperation;
   toolCallId: ToolCallId;
   toolName?: string;
   startedAt: Date;

@@ -1,4 +1,6 @@
 import { getTurnTools } from "./turn-tool-visibility.js";
+import { stageMultiAgentMailbox } from "../../multi-agent/index.js";
+import { drainInlineGuideForNextRequest } from "./turn-guide-drain.js";
 import { refreshOffPeakTurnAfterTakeover } from "../off-peak/turn.js";
 import { appendRuntimeAgentListing } from "../helpers/agent-listing.js";
 import { beginLocalTurnPreparation } from "@zcode/contracts";
@@ -52,8 +54,21 @@ export async function runRegularTurnLoop(
 ): Promise<void> {
   while (true) {
     throwIfTurnAborted(state.turnAbortSignal);
-    refreshOffPeakTurnAfterTakeover(this, state);
     const outputTokenRecoveryActive = state.turnRequestState.outputTokenContinuationCount > 0;
+    if (!outputTokenRecoveryActive && state.activeTurn && this.multiAgentRegistry && this.config?.multiAgentIdentity) {
+      await this.multiAgentPersistence?.ready;
+      throwIfTurnAborted(state.turnAbortSignal);
+      // 只在已确定继续采样的合法边界消费邮箱；最终收口不因邮件续跑，原样 max-token 续写也不插入邮件。
+      const staged = await stageMultiAgentMailbox(this.multiAgentRegistry, this.config.multiAgentIdentity, state.activeTurn.turnId);
+      if (staged > 0) {
+        const admittedGuides = state.activeTurn.pendingInputs.length;
+        for (let index = 0; index < admittedGuides; index++) {
+          throwIfTurnAborted(state.turnAbortSignal);
+          if (!await drainInlineGuideForNextRequest(this, state)) break;
+        }
+      }
+    }
+    refreshOffPeakTurnAfterTakeover(this, state);
     // guide 只允许由完整 tool result batch 设置这个一次性诊断；普通 queue 不在
     // model roundtrip 起点消费，避免把未来 turn 错并入当前 product turn。
     const drainedSteerForNextRequest = state.drainedSteerForNextRequest;

@@ -26,6 +26,7 @@ import {
 import {
   zcodeBrowserAmbientContextSchema,
   zcodeProtocolMcpServerSchema,
+  zcodeBackgroundTaskCancelScopeSchema,
 } from "../zcode-protocol/index.js";
 import { highspeedMessageMetaSchema } from "../highspeed.js";
 import { sharedContextRefSchema } from "./shared-context-ref.js";
@@ -264,7 +265,12 @@ export const commandPayloadSchemas = {
   setFollowupMode: z.object({ mode: z.enum(["queue", "guide"]) }),
   pauseGoal: z.object({}),
   resumeGoal: z.object({}),
-  cancelBackgroundWork: z.object({ workId: z.string() }),
+  cancelBackgroundWork: z.object({ workId: z.string(), scope: zcodeBackgroundTaskCancelScopeSchema.optional() }),
+  // 用户专用入口：信封指向原 Root，不能把只读 child 当作独立交互会话启动。
+  controlSubagent: z.discriminatedUnion("action", [
+    z.object({ action: z.literal("stop"), childSessionId: z.string().min(1) }).strict(),
+    z.object({ action: z.literal("send"), childSessionId: z.string().min(1), text: z.string().trim().min(1) }).strict(),
+  ]),
   // cancel & resume：恢复一个已取消 / 被进程死亡
   // 打断的 dwf run。workId ≡ runId（与 cancelBackgroundWork 同一个身份等式）；`name` 可选，
   // 喂恢复后完成通知的主题（重启后原 CreateWorkflow 工具 input 不可得）。刻意不携

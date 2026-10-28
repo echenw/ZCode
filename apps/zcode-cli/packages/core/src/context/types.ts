@@ -31,6 +31,8 @@ export type {
 export type ContextSource =
   | "cli_prefix" // CLI / 产品身份前缀
   | "identity" // Agent 基础描述
+  | "multi_agent_rules" // 稳定的树协作/角色规范
+  | "multi_agent_identity" // 当前树身份和真实工具能力
   | "env_info" // 环境信息 (cwd, platform, git repo boolean)
   | "system_context" // git snapshot context
   | "skills" // 可用 skills
@@ -99,7 +101,21 @@ export interface OutputStylePromptConfig {
 // Context Builder Config
 // -----------------------------------------------
 
+export interface MultiAgentContext {
+  nickname?: string;
+  agentPath: string;
+  parentPath?: string;
+  rootSessionId: string;
+  toolNamespace: string;
+  delegationMode: "explicit" | "proactive";
+  rootAgentUsageHintText?: string;
+  subagentUsageHintText?: string;
+  multiAgentModeHintText?: string;
+}
+
 export interface ContextBuilderConfig {
+  /** 仅由已启用的 Runtime 树控制器提供；工具名仍取当前有效目录。 */
+  multiAgent?: MultiAgentContext;
   workingDirectory: string;
   additionalDirectories?: readonly string[];
   envInfo: EnvInfo;

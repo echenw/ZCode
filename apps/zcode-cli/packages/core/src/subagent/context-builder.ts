@@ -7,7 +7,9 @@ import {
   type ContextBuildResult,
   type ContextSection,
   type EnvInfo,
+  type MultiAgentContext,
 } from "../context/index.js";
+import { buildMultiAgentSections } from "../context/sections/identity.js";
 import { buildCliPrefixSection } from "../context/sections/cli-prefix.js";
 import { buildCurrentDateSection } from "../context/sections/current-date.js";
 import { buildRequestUserContextSection } from "../context/sections/request-user-context.js";
@@ -17,6 +19,9 @@ import { buildSubagentCommonNotes, buildSubagentEnvironmentContext } from "./sys
 
 export interface SubagentContextBuilderConfig {
   agentPrompt: string;
+  developerInstructions?: string;
+  multiAgent?: MultiAgentContext;
+  guidanceToolNames?: readonly string[];
   currentDate?: string;
   envInfo: EnvInfo;
   model?: Model;
@@ -52,9 +57,16 @@ export class SubagentContextBuilder extends ContextBuilder {
       (section) => section.injectionTarget === "system",
     );
     // 逐段标记会耗尽缓存断点额度，导致对话末尾标记被丢弃；正文合并时保留各段自带的换行。
+    // V2 动态身份不能污染可复用的 Profile/规则前缀；禁用时维持原有两块布局。
+    const bodySections = systemSections.filter((section) => section.source !== "cli_prefix");
     const systemMessages = [
       systemSections.filter((section) => section.source === "cli_prefix"),
-      systemSections.filter((section) => section.source !== "cli_prefix"),
+      ...(this.subagentConfig.multiAgent
+        ? [
+            bodySections.filter((section) => section.cacheHint === "stable"),
+            bodySections.filter((section) => section.cacheHint === "dynamic"),
+          ]
+        : [bodySections]),
     ]
       .filter((group) => group.length > 0)
       .map(
@@ -110,6 +122,12 @@ export function createSubagentContextBuilder(
 
 function buildSubagentContextSections(config: SubagentContextBuilderConfig): ContextSection[] {
   const sections: ContextSection[] = [buildCliPrefixSection()];
+  if (config.developerInstructions) {
+    sections.push(createSubagentSection({
+      name: "Subagent Developer Instructions", source: "custom_system_prompt", cacheHint: "stable",
+      content: `\n\n${config.developerInstructions}`,
+    }));
+  }
   const agentPrompt = config.agentPrompt.trimEnd();
   if (agentPrompt) {
     sections.push(
@@ -144,6 +162,8 @@ function buildSubagentContextSections(config: SubagentContextBuilderConfig): Con
     }),
   );
 
+  sections.push(...buildMultiAgentSections(config.multiAgent, config.guidanceToolNames));
+
   const requestUserContextSection = buildRequestUserContextSection({
     userInstructions: config.userInstructions,
   });
@@ -154,7 +174,7 @@ function buildSubagentContextSections(config: SubagentContextBuilderConfig): Con
   if (currentDateSection) {
     sections.push(currentDateSection);
   }
-  if (config.skills) {
+  if (config.skills && (config.guidanceToolNames === undefined || config.guidanceToolNames.includes("Skill"))) {
     const skillsSection = buildSkillsSection({
       outcome: config.skills,
       metadataBudget: config.skillMetadataBudget,
@@ -169,7 +189,8 @@ function buildSubagentContextSections(config: SubagentContextBuilderConfig): Con
 
 function orderSubagentSections(sections: ContextSection[]): ContextSection[] {
   return [
-    ...sections.filter((section) => section.injectionTarget === "system"),
+    ...sections.filter((section) => section.injectionTarget === "system" && section.cacheHint === "stable"),
+    ...sections.filter((section) => section.injectionTarget === "system" && section.cacheHint === "dynamic"),
     ...sections.filter((section) => section.injectionTarget === "meta_user"),
   ];
 }

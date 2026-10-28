@@ -11,7 +11,7 @@ import {
   type MessageWithParts,
 } from "@zcode/contracts";
 import type { AgentRuntime } from "@zcode/core";
-import { createSubagentObservation } from "../../bootstrap/src/app/subagent-observation.js";
+import { createSubagentObservation } from "../../bootstrap/src/app/multi-agent-observation/index.js";
 
 const parentId = createSessionId("parent");
 const childId = createSessionId("subagent_agent1");

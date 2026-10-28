@@ -1,11 +1,53 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveSessionModelContextWindow } from "../src/zcode-protocol/workspace-model-runtime.js";
+import {
+  resolveDetachedSessionModelContextWindow,
+  resolveSessionModelContextWindow,
+} from "../src/zcode-protocol/workspace-model-runtime.js";
+import { SessionEventType, type SessionEvent } from "@zcode/contracts";
 import type {
   ZCodeProtocolAgentServerContext,
   ZCodeProtocolSessionRecord,
 } from "../src/zcode-protocol/server-types.js";
 
 describe("恢复容量身份边界", () => {
+  const childSelection = { providerId: "child", modelId: "child-model" };
+  const parentRecord = {
+    app: {
+      runtime: {
+        getSessionModelSelection: () => ({ providerId: "parent", modelId: "parent-model" }),
+      },
+      getModelOption: (selection: typeof childSelection) => ({
+        contextWindow: selection.providerId === "child" ? 960_000 : 200_000,
+      }),
+    },
+  } as unknown as ZCodeProtocolSessionRecord;
+  const modelEvent = (sessionId: string, contextWindow: number | null) =>
+    ({
+      sessionId,
+      type: SessionEventType.ModelSelected,
+      payload: { modelSelection: childSelection, contextWindow },
+    }) as SessionEvent;
+
+  it("detached child 只采纳自己的容量事件，显式未知不能复活旧分母", () => {
+    const events = [modelEvent("child", 960_000), modelEvent("parent", 200_000)];
+    expect(resolveDetachedSessionModelContextWindow(parentRecord, "child", events, undefined)).toBe(
+      960_000,
+    );
+    events.push(modelEvent("child", null));
+    expect(
+      resolveDetachedSessionModelContextWindow(parentRecord, "child", events, childSelection),
+    ).toBeUndefined();
+  });
+
+  it("detached child 无事件时按自己的持久选型查询目录，缺选型保持未知", () => {
+    expect(
+      resolveDetachedSessionModelContextWindow(parentRecord, "child", [], childSelection),
+    ).toBe(960_000);
+    expect(
+      resolveDetachedSessionModelContextWindow(parentRecord, "child", [], undefined),
+    ).toBeUndefined();
+  });
+
   it("Runtime 当前选择优先，清除恢复候选后不能复活", () => {
     const old = { providerId: "old", modelId: "GLM-5.3" };
     const current = { providerId: "new", modelId: "GLM-5.3-Flash" };

@@ -1,6 +1,12 @@
 /* eslint-disable max-lines -- workspace 模型协议与兼容请求处理仍集中在本文件。 */
 import { createInMemorySessionEventStore } from "@zcode/adapters/storage";
-import type { ModelSelection } from "@zcode/contracts";
+import {
+  SessionEventType,
+  type ModelCompletePayload,
+  type ModelSelectedPayload,
+  type ModelSelection,
+  type SessionEvent,
+} from "@zcode/contracts";
 import {
   zcodeProviderTestModelConnectivityParamsSchema,
   zcodeWorkspaceReadPresentationParamsSchema,
@@ -145,5 +151,39 @@ export function resolveSessionModelContextWindow(
   // 缺档位会让恢复选择暂不绑定 Runtime，但模型身份仍可只读查询容量，不能伪造 20 万。
   const selection = record.app.runtime.getSessionModelSelection() ?? record.restoredModelSelection;
   const value = selection && record.app.getModelOption?.(selection)?.contextWindow;
+  return validContextWindow(value);
+}
+
+export function resolveDetachedSessionModelContextWindow(
+  record: Pick<ZCodeProtocolSessionRecord, "app">,
+  sessionId: string,
+  events: readonly SessionEvent[],
+  persistedSelection: ModelSelection | undefined,
+): number | undefined {
+  // 父 record 只借模型目录；容量必须来自 child 自己最近的执行/选型事实。
+  // 显式 null 也终止查找，不能复活旧容量或借父模型伪造分母。
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (!event || event.sessionId !== sessionId) continue;
+    if (event.type === SessionEventType.ModelSelected) {
+      const payload = event.payload as ModelSelectedPayload;
+      return payload.contextWindow !== undefined
+        ? validContextWindow(payload.contextWindow)
+        : validContextWindow(record.app.getModelOption?.(payload.modelSelection)?.contextWindow);
+    } else if (event.type === SessionEventType.ModelComplete) {
+      const payload = event.payload as ModelCompletePayload;
+      if (
+        (payload.querySource === "main_turn" || payload.querySource === "subagent") &&
+        payload.contextWindow !== undefined
+      )
+        return validContextWindow(payload.contextWindow);
+    }
+  }
+  const value =
+    persistedSelection && record.app.getModelOption?.(persistedSelection)?.contextWindow;
+  return validContextWindow(value);
+}
+
+function validContextWindow(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }

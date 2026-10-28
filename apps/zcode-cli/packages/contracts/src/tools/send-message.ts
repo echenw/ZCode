@@ -33,6 +33,7 @@ export const SendMessageOutputSchema = z
     status: z.enum(["success", "failed"]),
     messageId: z.string(),
     agentId: z.string().optional(),
+    recipientName: z.string().optional(),
     delivery: z.enum(["queued", "steered", "resumed_background"]).optional(),
     error: z.string().optional(),
     message: z.string().optional(),

@@ -176,6 +176,13 @@ export function resolveAppRuntimeConfig(input: {
       },
       profiles: [...(options.runtimeConfig?.subagents?.profiles ?? []), ...subagentProfiles],
     },
+    multiAgentV2: {
+      ...configResult.config.multiAgentV2,
+      ...options.runtimeConfig?.multiAgentV2,
+      enabled:
+        (options.runtimeConfig?.subagents?.enabled ?? configResult.config.features.subagent) &&
+        (options.runtimeConfig?.multiAgentV2?.enabled ?? configResult.config.multiAgentV2?.enabled ?? false),
+    },
     memory: {
       cliStorageRoot,
       enabled: options.runtimeConfig?.memory?.enabled ?? configResult.config.features.memory,

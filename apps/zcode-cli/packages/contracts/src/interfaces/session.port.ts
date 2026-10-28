@@ -207,12 +207,22 @@ export interface BackgroundTaskInfo {
   terminalId?: string;
 }
 
-export interface BackgroundTaskCancelResult {
+export interface BackgroundTaskCancelOptions {
+  scope?: import("@zcode/shared").ZCodeBackgroundTaskCancelScope;
+  traceContext?: TraceContext;
+}
+
+export interface BackgroundTaskCancelOutcome {
   cancelled: boolean;
   reason?: string;
-  snapshot?: BackgroundTaskInfo;
   status: BackgroundTaskInfoStatus;
   taskId: string;
+}
+
+export interface BackgroundTaskCancelResult extends BackgroundTaskCancelOutcome {
+  snapshot?: BackgroundTaskInfo;
+  scope?: BackgroundTaskCancelOptions["scope"];
+  tasks?: BackgroundTaskCancelOutcome[];
 }
 
 export interface ErrorInfo {

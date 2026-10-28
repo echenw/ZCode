@@ -2,7 +2,6 @@ import {
   CompactPhase,
   CompactReason,
   CompactTrigger,
-  countContextPrefixMessages,
   isCoreError,
   maybeLocalMicrocompactMessages,
 } from "../deps.js";
@@ -12,6 +11,7 @@ import {
   cloneRuntimeMessageEntry,
   invalidateRuntimeTokenUsage,
   isRuntimeAttachmentEntry,
+  splitRuntimeContextPrefix,
   type RuntimeMessageEntry,
 } from "../../agent/message-history.js";
 import { buildProviderRequestMessages } from "./provider-request-messages.js";
@@ -78,9 +78,9 @@ export function buildPostCompactRuntimeEntries(
   } = {},
 ): RuntimeMessageEntry[] {
   // compact 后只保留 metadata 标记的 prefix，避免用户 literal <system-reminder> 被文本规则误留。
-  const prefixCount = countContextPrefixMessages(activeEntries);
+  const { contextPrefixEntries } = splitRuntimeContextPrefix(activeEntries);
   return [
-    ...activeEntries.slice(0, prefixCount).map(cloneRuntimeEntry),
+    ...contextPrefixEntries.map(cloneRuntimeEntry),
     cloneRuntimeEntry(summaryEntry),
     ...(options.preservedEntries ?? []).map(cloneCompactPreservedRuntimeEntry),
     ...(options.postCompactReminderEntries ?? []).map(cloneRuntimeEntry),

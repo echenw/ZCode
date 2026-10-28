@@ -69,6 +69,26 @@ function createMainOnlyConfigResult() {
 }
 
 describe("resolveAppRuntimeConfig", () => {
+  it("passes native V2 file configuration and session overrides to the same runtime", () => {
+    const configResult = createConfig({ skipUserConfig: true, env: {}, cliOverrides: {
+      multiAgentV2: { enabled: true, toolNamespace: "team", maxConcurrentThreadsPerSession: 8 },
+    } });
+    const resolved = resolveAppRuntimeConfig({ cliStorageRoot: "/tmp/zcode-cli", configResult,
+      options: { runtimeConfig: { multiAgentV2: { waitAgentEnabled: false } } },
+      subagentOutputRootDir: "/tmp/zcode-cli/agents", workingDirectory });
+    expect(resolved.runtimeConfig.multiAgentV2).toEqual({ enabled: true, toolNamespace: "team",
+      maxConcurrentThreadsPerSession: 8, waitAgentEnabled: false });
+  });
+
+  it("keeps the existing subagent master switch authoritative over V2", () => {
+    const configResult = createConfig({ skipUserConfig: true, env: {}, cliOverrides: {
+      features: { subagent: false }, multiAgentV2: { enabled: true },
+    } });
+    const resolved = resolveAppRuntimeConfig({ cliStorageRoot: "/tmp/zcode-cli", configResult,
+      options: {}, subagentOutputRootDir: "/tmp/zcode-cli/agents", workingDirectory });
+    expect(resolved.runtimeConfig.multiAgentV2?.enabled).toBe(false);
+  });
+
   it.each([undefined, [], ["/workspace/backend", "C:\\work\\shared folder"]])(
     "passes the current additional directories into runtime context: %j",
     (additionalDirectories) => {

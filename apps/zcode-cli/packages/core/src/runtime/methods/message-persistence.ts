@@ -60,6 +60,8 @@ export async function persistUserPrompt(
   if (!this.sessionStore) return;
 
   const created = Date.now();
+  const agentCommunication = options?.inputPresentation === "coordinator_steer" ||
+    options?.inputPresentation === "subagent_reply_steer" || options?.inputPresentation === "subagent_reply";
   const tools = Object.fromEntries(this.getTools().map((tool) => [tool.name, true]));
   const conversationInputIntent = buildPersistedConversationInputIntent(
     input,
@@ -77,18 +79,19 @@ export async function persistUserPrompt(
     modelSelection: this.getSessionModelSelection(),
     contextSnapshot: buildPersistedContextSnapshot(this.config.envInfo),
     semantics: {
-      origin: "real_user",
-      kind: "user_prompt",
+      origin: agentCommunication ? "agent_runtime" : "real_user",
+      kind: agentCommunication ? "subagent_notification" : "user_prompt",
       uiVisibility: "visible",
       providerVisibility: "visible",
       transcriptVisibility: "visible",
     },
     anchor: buildProjectionAnchor(
       traceContext,
-      "realUser",
+      agentCommunication ? "mailbox" : "realUser",
       options?.intent?.sourceCommandId ?? options?.sourceCommandId,
     ),
     system: this.config.systemPrompt,
+    ...(agentCommunication ? { source: "subagent_message" as const } : {}),
     tools,
     ...(options?.inputPresentation ||
     options?.steerDelivery ||

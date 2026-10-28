@@ -15,6 +15,24 @@ import {
 } from "../src/zcode-protocol-v4/index.js";
 
 describe("zcode-protocol-v4 command", () => {
+  it("validates user control of a child through the root without accepting unrelated payloads", () => {
+    expect(commandPayloadSchemas.controlSubagent.parse({ action: "send", childSessionId: "child", text: "continue" }))
+      .toEqual({ action: "send", childSessionId: "child", text: "continue" });
+    expect(commandPayloadSchemas.controlSubagent.parse({ action: "stop", childSessionId: "child" }))
+      .toEqual({ action: "stop", childSessionId: "child" });
+    for (const payload of [
+      { action: "send", childSessionId: "child", text: " " },
+      { action: "stop", childSessionId: "child", scope: "tree" },
+      { action: "send", text: "continue" },
+    ]) expect(commandPayloadSchemas.controlSubagent.safeParse(payload).success).toBe(false);
+  });
+  it("preserves explicit agent stop scopes and keeps the legacy single-task payload", () => {
+    expect(commandPayloadSchemas.cancelBackgroundWork.parse({ workId: "agent" })).toEqual({ workId: "agent" });
+    for (const scope of ["task", "subtree", "tree"]) {
+      expect(commandPayloadSchemas.cancelBackgroundWork.parse({ workId: "agent", scope })).toEqual({ workId: "agent", scope });
+    }
+    expect(commandPayloadSchemas.cancelBackgroundWork.safeParse({ workId: "agent", scope: "everything" }).success).toBe(false);
+  });
   it("parses a valid sendText envelope with typed payload", () => {
     const result = parseCommandEnvelope({
       commandId: "018f0000-0000-7000-8000-000000000001",

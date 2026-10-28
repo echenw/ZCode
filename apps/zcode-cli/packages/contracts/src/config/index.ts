@@ -4,6 +4,7 @@ import type { CollaborationMode } from "../interfaces/session.port.js";
 import type { McpServerConfig } from "../interfaces/mcp.port.js";
 import type { HooksRuntimeConfig, HooksRuntimeConfigPatch } from "../hooks/index.js";
 import type { PluginConfig, PluginOptionValues } from "../plugins/index.js";
+import type { MultiAgentV2Config } from "../multi-agent/index.js";
 
 // ============================================================
 // Config Key Types
@@ -36,6 +37,8 @@ export const ConfigKey = {
   FeatureMemory: "features.memory",
   FeatureSkill: "features.skill",
   FeatureMcp: "features.mcp",
+
+  MultiAgentV2: "multiAgentV2",
 
   // Memory
   MemoryUse: "memory.use",
@@ -85,7 +88,9 @@ export type ConfigKey = (typeof ConfigKey)[keyof typeof ConfigKey];
 // Config Value Types
 // ============================================================
 
-export type ConfigValue<K extends ConfigKey> = K extends "modelStream.idleTimeoutMs"
+export type ConfigValue<K extends ConfigKey> = K extends "multiAgentV2"
+  ? MultiAgentV2Config
+  : K extends "modelStream.idleTimeoutMs"
   ? number
   : K extends "permission.mode"
     ? CollaborationMode
@@ -201,6 +206,7 @@ export interface SkillCommandOverride {
 
 export interface RuntimeConfig {
   modelStream: ModelStreamConfig;
+  multiAgentV2: MultiAgentV2Config;
   permission: {
     mode: CollaborationMode;
     allowedTools: string[];
@@ -259,6 +265,7 @@ export interface RuntimeConfig {
 
 export interface RuntimeConfigPatch {
   modelStream?: Partial<ModelStreamConfig>;
+  multiAgentV2?: MultiAgentV2Config;
   permission?: Partial<RuntimeConfig["permission"]>;
   storage?: Partial<RuntimeConfig["storage"]>;
   network?: Partial<RuntimeConfig["network"]>;
@@ -288,6 +295,7 @@ export interface ModelStreamConfig {
 }
 
 export const DefaultRuntimeConfig: RuntimeConfig = {
+  multiAgentV2: { enabled: false },
   modelStream: {
     idleTimeoutMs: DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
   },

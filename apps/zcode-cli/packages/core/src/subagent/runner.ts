@@ -6,6 +6,7 @@
 import type { GetAgentDefinitions } from "./definitions.js";
 import {
   AgentErrorCode,
+  AGENT_WAIT_CANCELLED_MESSAGE,
   CoreErrorType,
   DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
   SessionEventType,
@@ -24,6 +25,7 @@ import {
   type AgentOutput,
   type Logger,
   type ModelUsage,
+  type MultiAgentV2Config,
   type SessionEvent,
   type SessionId,
   type SubagentLaunchOptions,
@@ -40,7 +42,9 @@ import {
   type SubagentTaskSnapshot,
   type SubagentWaitOptions,
   type TraceContext,
+  type TurnId,
 } from "@zcode/contracts";
+import { assertMultiAgentCapacity, notifyMultiAgentParent } from "../multi-agent/index.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -67,6 +71,15 @@ import {
 } from "../runtime-task/registry.js";
 
 export interface ExploreSubagentRuntimeRequest {
+  userInitiated?: boolean;
+  multiAgent?: SubagentRunRequest["multiAgent"];
+  forkHistory?: SubagentRunRequest["forkHistory"];
+  parentSessionId?: SessionId;
+  inheritedToolAllowlist?: SubagentRunRequest["inheritedToolAllowlist"];
+  inheritedPermissionMode?: SubagentRunRequest["inheritedPermissionMode"];
+  inheritedPlanEnabled?: SubagentRunRequest["inheritedPlanEnabled"];
+  inheritedDeveloperInstructions?: SubagentRunRequest["inheritedDeveloperInstructions"];
+  inheritedUserInstructions?: SubagentRunRequest["inheritedUserInstructions"];
   agentId: string;
   agentType: string;
   allowedTools: readonly string[];
@@ -127,6 +140,10 @@ export interface ExploreSubagentPortOptions {
   getAllowedTools?: (profile: AgentProfile) => readonly string[];
   inactivityTimeoutMs?: number;
   autoBackgroundMs?: number;
+  multiAgentRegistry?: RuntimeTaskRegistry;
+  multiAgentV2?: MultiAgentV2Config;
+  executionHostSessionId?: SessionId;
+  detachAcceptedChildren?: boolean;
   logger?: Logger;
 }
 
@@ -141,6 +158,10 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
   const autoBackgroundMs = normalizeAutoBackgroundMs(options.autoBackgroundMs);
 
   const port: SubagentPort & { start: NonNullable<SubagentPort["start"]> } = {
+    restoreTask(taskId) {
+      const task = registry.get(taskId);
+      if (task?.resumeState) bindTaskControl(taskId, task.resumeState.request, task.resumeState.profile);
+    },
     async launch(
       rawRequest: SubagentLaunchRequest,
       launchOptions?: SubagentLaunchOptions,
@@ -181,6 +202,9 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
       const { profile, request } = resolveAgentProfileForRequest(getProfiles(), rawRequest);
       const lifecycle = createSubagentLifecycle(options, request, profile);
       const startedAt = new Date(lifecycle.startedAt);
+      const taskAbort = createSubagentTaskAbortController(
+        abortControllers, lifecycle.agentId, options.detachAcceptedChildren ? undefined : runOptions?.signal,
+      );
 
       registry.register(
         createRuntimeTaskSnapshot({
@@ -191,21 +215,28 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
           status: "running",
         }),
       );
+      bindTaskControl(lifecycle.agentId, request, profile);
       try {
         await writeAgentMetadataFile(lifecycle, request, "running");
       } catch (error) {
         // 启动元数据写入失败时，child runtime 还没有开始执行；
         // 保留 running task 会让父 runtime 误以为仍有后台任务并持续 defer。
-        registry.remove(lifecycle.agentId);
+        taskAbort.dispose();
+        const current = registry.get(lifecycle.agentId);
+        if (current && !isTerminalRuntimeTask(current)) registry.remove(lifecycle.agentId);
         throw error;
       }
 
-      const taskAbort = createSubagentTaskAbortController(
-        abortControllers,
-        lifecycle.agentId,
-        runOptions?.signal,
-      );
+      if (taskAbort.signal.aborted) { taskAbort.dispose(); throw taskAbort.signal.reason; }
       const hasForegroundModelOverride = runOptions?.modelOverride?.background === "deny";
+      const detachOnParentStop = () => {
+        if (!hasForegroundModelOverride) registry.requestBackground(lifecycle.agentId);
+        else taskAbort.abort(runOptions?.signal?.reason);
+      };
+      if (options.detachAcceptedChildren && runOptions?.signal) {
+        if (runOptions.signal.aborted) detachOnParentStop();
+        else runOptions.signal.addEventListener("abort", detachOnParentStop, { once: true });
+      }
       if (hasForegroundModelOverride) {
         borrowedForegroundAgentIds.add(lifecycle.agentId);
       }
@@ -341,18 +372,26 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         borrowedForegroundAgentIds.delete(lifecycle.agentId);
 
         await writeCompletedAgentArtifacts(lifecycle, request, completed.output);
-        registry.update(lifecycle.agentId, (task) => ({
-          ...withoutRuntimeMessageState(task),
-          status: "completed",
-          completedAt: new Date(),
-          output: completed.output,
-          usage: {
-            durationMs: completed.output.totalDurationMs,
-            modelUsage: completed.output.usage,
-            toolUseCount: completed.output.totalToolUseCount,
-            totalTokens: completed.output.totalTokens,
-          },
-        }));
+        let committed = false;
+        registry.update(lifecycle.agentId, (task) => {
+          if (isTerminalRuntimeTask(task) || (task.multiAgent && task.multiAgent.runGeneration !== lifecycle.runGeneration)) return task;
+          committed = true;
+          return {
+            ...withoutRuntimeMessageState(task),
+            status: "completed",
+            completedAt: new Date(),
+            output: completed.output,
+            usage: {
+              durationMs: completed.output.totalDurationMs,
+              modelUsage: completed.output.usage,
+              toolUseCount: completed.output.totalToolUseCount,
+              totalTokens: completed.output.totalTokens,
+            },
+          };
+        });
+        if (!committed) throw createCoreError(CoreErrorType.ToolCancelled, "Agent result was superseded by interruption or another turn", {
+          context: { agentId: lifecycle.agentId }, recoverable: true,
+        });
 
         await emitSubagentEvent(
           options,
@@ -389,16 +428,22 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         borrowedForegroundAgentIds.delete(lifecycle.agentId);
         const totalDurationMs = Date.now() - lifecycle.startedAt;
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const current = registry.get(lifecycle.agentId);
+        if (!current || isTerminalRuntimeTask(current) || (current.multiAgent && current.multiAgent.runGeneration !== lifecycle.runGeneration)) throw error;
         await writeFailedAgentArtifacts(lifecycle, request, errorMessage);
-        registry.update(lifecycle.agentId, (task) => ({
-          ...withoutRuntimeMessageState(task),
-          status: "failed",
-          completedAt: new Date(),
-          error: errorMessage,
-          usage: {
-            durationMs: totalDurationMs,
-          },
-        }));
+        let committed = false;
+        registry.update(lifecycle.agentId, (task) => {
+          if (isTerminalRuntimeTask(task) || (task.multiAgent && task.multiAgent.runGeneration !== lifecycle.runGeneration)) return task;
+          committed = true;
+          return {
+            ...withoutRuntimeMessageState(task),
+            status: "failed",
+            completedAt: new Date(),
+            error: errorMessage,
+            usage: { durationMs: totalDurationMs },
+          };
+        });
+        if (!committed) throw error;
         await emitSubagentEvent(
           options,
           SessionEventType.SubagentStopped,
@@ -437,6 +482,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
       } finally {
         activityWatchdog.stop();
         autoBackgroundTimer?.cancel();
+        runOptions?.signal?.removeEventListener("abort", detachOnParentStop);
       }
     },
 
@@ -448,6 +494,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
       const lifecycle = createSubagentLifecycle(options, request, profile);
       const startedAt = new Date(lifecycle.startedAt);
       const output = createAgentBackgroundedOutput(request, lifecycle);
+      const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
 
       registry.register(
         createRuntimeTaskSnapshot({
@@ -458,16 +505,19 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
           status: "running",
         }),
       );
+      bindTaskControl(lifecycle.agentId, request, profile);
       try {
         await writeAgentMetadataFile(lifecycle, request, "running");
       } catch (error) {
-        // setup 失败时移除 registry 记录，避免 fake running background task。
-        registry.remove(lifecycle.agentId);
+        // A concurrent Stop retains its terminal identity; other setup failures release the reservation.
+        taskAbort.dispose();
+        const current = registry.get(lifecycle.agentId);
+        if (current && !isTerminalRuntimeTask(current)) registry.remove(lifecycle.agentId);
         throw error;
       }
+      if (taskAbort.signal.aborted) { taskAbort.dispose(); return output; }
 
-      const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
-      if (startOptions?.signal?.aborted) {
+      if (!options.detachAcceptedChildren && startOptions?.signal?.aborted) {
         taskAbort.abort(startOptions.signal.reason);
       }
       const readyGate = createSubagentSessionReadyGate();
@@ -558,23 +608,21 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
       }
       const task = registry.get(taskId);
       if (!task || task.type !== "local_agent") return task;
+      if (task.multiAgent?.agentPath === "/root") return task;
       if (isTerminalRuntimeTask(task)) return task;
-
-      const stopped = createBackgroundStoppedTask(registry, task);
-      if (!stopped) return undefined;
-      return finalizeBackgroundStopped(options, registry, stopped, () => {
-        abortControllers
-          .get(taskId)
-          ?.abort(new Error(`${BACKGROUND_AGENT_STOPPED_STATE.message}: ${taskId}`));
-        abortControllers.delete(taskId);
-      });
+      if (task.control) return task.control.stop();
+      return stopOwnedTask(taskId);
     },
 
     async sendMessage(
       request: SubagentSendMessageRequest,
       sendOptions?: SubagentSendMessageOptions,
     ): Promise<SubagentSendMessageResult> {
-      return sendMessageToLocalAgent(
+      const target = registry.get(request.to);
+      if (target?.multiAgent && target.control && isTerminalRuntimeTask(target)) return {
+        ...await target.control.resume(request, sendOptions), recipientName: target.multiAgent.nickname,
+      };
+      const result = await sendMessageToLocalAgent(
         options,
         getProfiles,
         registry,
@@ -582,9 +630,41 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         request,
         sendOptions,
       );
+      return { ...result, ...(target?.multiAgent?.nickname ? { recipientName: target.multiAgent.nickname } : {}) };
     },
   };
 
+  async function stopOwnedTask(taskId: string): Promise<SubagentTaskSnapshot | undefined> {
+    const task = registry.get(taskId);
+    if (!task || isTerminalRuntimeTask(task)) return task;
+    const stopped = createBackgroundStoppedTask(registry, task);
+    if (!stopped) return undefined;
+    const abortOwnedTurn = () => {
+      abortControllers.get(taskId)?.abort(new Error(`${BACKGROUND_AGENT_STOPPED_STATE.message}: ${taskId}`));
+      abortControllers.delete(taskId);
+    };
+    if (task.multiAgent) {
+      // Stop is admitted before any filesystem await; setup cannot start a cancelled generation.
+      registry.update(taskId, () => stopped.task);
+      abortOwnedTurn();
+      return finalizeBackgroundStopped(options, registry, stopped);
+    }
+    return finalizeBackgroundStopped(options, registry, stopped, abortOwnedTurn);
+  }
+
+  function bindTaskControl(agentId: string, request: SubagentRunRequest, profile: AgentProfile): void {
+    if (!request.multiAgent) return;
+    const { forkHistory: _forkHistory, ...savedRequest } = request;
+    registry.update(agentId, (task) => ({ ...task, resumeState: { request: savedRequest, profile: structuredClone(profile) }, control: {
+      executionHostSessionId: options.executionHostSessionId ?? request.sessionId,
+      stop: () => stopOwnedTask(agentId),
+      resume: (message, resumeOptions) => sendMessageToLocalAgent(
+        options, () => [profile], registry, abortControllers,
+        { ...message, to: agentId, sessionId: request.sessionId,
+          parentToolCallId: request.parentToolCallId,
+          workingDirectory: request.workingDirectory, workspaceRoot: request.workspaceRoot }, resumeOptions),
+    } }));
+  }
   return port;
 }
 
@@ -596,6 +676,7 @@ interface SubagentLifecycle {
   taskOutputFile: string;
   profile: AgentProfile;
   startedAt: number;
+  runGeneration: number;
   runTraceContext: TraceContext;
   childTraceContext: TraceContext;
 }
@@ -807,7 +888,7 @@ function createSubagentLifecycle(
   request: SubagentRunRequest,
   profile: AgentProfile,
 ): SubagentLifecycle {
-  const agentId = options.createAgentId?.() ?? `agent_${crypto.randomUUID()}`;
+  const agentId = request.multiAgent?.agentId ?? options.createAgentId?.() ?? `agent_${crypto.randomUUID()}`;
   const childSessionId = createSessionId(`subagent_${agentId}`);
   const startedAt = Date.now();
   const agentOutputDir = join(
@@ -846,6 +927,7 @@ function createSubagentLifecycle(
     taskOutputFile,
     profile,
     startedAt,
+    runGeneration: 1,
     runTraceContext,
     childTraceContext,
   };
@@ -861,9 +943,10 @@ function createSubagentLifecycleFromTask(
   const agentId = task.agentId;
   const childSessionId = task.childSessionId;
   const startedAt = Date.now();
-  const agentOutputDir = task.outputFile
-    ? dirname(task.outputFile)
-    : join(options.outputRootDir ?? join(tmpdir(), "zcode-agents"), request.sessionId, agentId);
+  const agentOutputDir = task.multiAgent
+    ? join(options.outputRootDir ?? join(tmpdir(), "zcode-agents"), request.sessionId, agentId, `run-${task.multiAgent.runGeneration + 1}`)
+    : task.outputFile ? dirname(task.outputFile)
+      : join(options.outputRootDir ?? join(tmpdir(), "zcode-agents"), request.sessionId, agentId);
   const metadataFile = join(agentOutputDir, "metadata.json");
   const outputFile = join(agentOutputDir, "output.txt");
   const taskOutputFile = join(agentOutputDir, "task.output");
@@ -897,6 +980,7 @@ function createSubagentLifecycleFromTask(
     taskOutputFile,
     profile,
     startedAt,
+    runGeneration: (task.multiAgent?.runGeneration ?? 0) + 1,
     runTraceContext,
     childTraceContext,
   };
@@ -923,6 +1007,10 @@ async function sendMessageToLocalAgent(
   }
 
   const message = createRuntimeTaskPendingMessage(request);
+  if (request.deliveryMode === "queue_only") {
+    registry.queueMessage(task.taskId, message);
+    return createSendMessageSuccess(task, message, "queued");
+  }
   if (!isTerminalRuntimeTask(task)) {
     return deliverMessageToRunningAgent(registry, task, message);
   }
@@ -945,6 +1033,7 @@ async function deliverMessageToRunningAgent(
   message: RuntimeTaskPendingMessage,
 ): Promise<SubagentSendMessageResult> {
   if (task.messageSink) {
+    if (task.messageSink.retainsUntilConsumed) registry.queueMessage(task.taskId, message);
     try {
       const delivery = await task.messageSink.send(message);
       return createSendMessageSuccess(task, message, delivery);
@@ -968,7 +1057,7 @@ async function resumeTerminalAgentInBackground(
   message: RuntimeTaskPendingMessage,
   sendOptions?: SubagentSendMessageOptions,
 ): Promise<SubagentSendMessageResult> {
-  const profile = profiles.find((candidate) => candidate.name === task.agentType);
+  const profile = task.resumeState?.profile ?? profiles.find((candidate) => candidate.name === task.agentType);
   if (!profile) {
     return createSendMessageFailure(
       request,
@@ -977,6 +1066,8 @@ async function resumeTerminalAgentInBackground(
   }
 
   const resumeRequest: SubagentRunRequest = {
+    ...task.resumeState?.request,
+    userInitiated: request.userInitiated === true,
     sessionId: request.sessionId,
     turnId: request.turnId,
     parentToolCallId: request.parentToolCallId,
@@ -986,6 +1077,11 @@ async function resumeTerminalAgentInBackground(
     workingDirectory: request.workingDirectory,
     workspaceRoot: request.workspaceRoot,
     trace: request.trace,
+    ...(task.multiAgent ? { multiAgent: { agentId: task.agentId, agentPath: task.multiAgent.agentPath,
+      parentPath: task.multiAgent.parentPath, rootSessionId: task.multiAgent.rootSessionId,
+      forkTurns: task.multiAgent.forkTurns ?? "none", roleWasExplicit: task.multiAgent.roleWasExplicit, model: task.multiAgent.model,
+      reasoningEffort: task.multiAgent.reasoningEffort,
+      initiatingAgentPath: request.senderPath ?? task.multiAgent.parentPath, initiatingTurnId: request.turnId } } : {}),
   };
   const lifecycle = createSubagentLifecycleFromTask(options, resumeRequest, profile, task);
   if (!lifecycle) {
@@ -994,17 +1090,25 @@ async function resumeTerminalAgentInBackground(
       `Cannot resume local agent ${task.agentId}: missing child session id.`,
     );
   }
+  // 旧 SendMessage 也能续接 V2；准入必须位于所有入口共用的 runner，
+  // 并紧邻首次 await 前的 running/resident 预留，避免并发越过最后一个槽。
+  if (task.multiAgent) assertMultiAgentCapacity(options.multiAgentRegistry ?? registry,
+    task.multiAgent, options.multiAgentV2 ?? { enabled: true });
   const startedAt = new Date(lifecycle.startedAt);
   const previousTask = task;
-  registry.register(
-    createRuntimeTaskSnapshot({
-      isBackgrounded: true,
-      lifecycle,
-      request: resumeRequest,
-      startedAt,
-      status: "running",
-    }),
-  );
+  const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
+  registry.register({
+    ...task,
+    ...createRuntimeTaskSnapshot({ isBackgrounded: true, lifecycle, request: resumeRequest, startedAt, status: "running" }),
+    ...(task.multiAgent ? { multiAgent: { ...task.multiAgent, resident: true, runGeneration: task.multiAgent.runGeneration + 1,
+      initiatingAgentPath: resumeRequest.multiAgent?.initiatingAgentPath, initiatingTurnId: resumeRequest.multiAgent?.initiatingTurnId } } : {}),
+    pendingMessages: task.pendingMessages ?? [],
+    control: task.control,
+    notified: false,
+    completedAt: undefined,
+    output: undefined,
+    error: undefined,
+  });
   try {
     await writeAgentMetadataFile(lifecycle, resumeRequest, "running", {
       resumedAt: new Date().toISOString(),
@@ -1013,11 +1117,16 @@ async function resumeTerminalAgentInBackground(
   } catch (error) {
     // SendMessage resume setup 失败不能覆盖原 terminal task；
     // 还原旧 snapshot，避免一个未启动的新 turn 卡成 running。
-    registry.register(previousTask);
+    taskAbort.dispose();
+    const current = registry.get(lifecycle.agentId);
+    if (current && current.status === "running" && current.multiAgent?.runGeneration === lifecycle.runGeneration) registry.register(previousTask);
     throw error;
   }
+  if (taskAbort.signal.aborted) {
+    taskAbort.dispose();
+    return createSendMessageSuccess({ ...task, outputFile: lifecycle.outputFile }, message, "resumed_background");
+  }
 
-  const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
   const readyGate = createSubagentSessionReadyGate();
   void runBackgroundAgent(
     options,
@@ -1060,7 +1169,8 @@ async function resumeTerminalAgentInBackground(
     await readyGate.promise;
   } catch (error) {
     taskAbort.abort(error);
-    registry.register(previousTask);
+    const current = registry.get(lifecycle.agentId);
+    if (current?.status === "running" && current.multiAgent?.runGeneration === lifecycle.runGeneration) registry.register(previousTask);
     throw error;
   }
   // terminal 状态属于旧 snapshot，但 resume 输出路径属于新 lifecycle；
@@ -1076,7 +1186,8 @@ function createRuntimeTaskPendingMessage(
   request: SubagentSendMessageRequest,
 ): RuntimeTaskPendingMessage {
   return {
-    id: `msg_${crypto.randomUUID()}`,
+    id: request.messageId ?? `msg_${crypto.randomUUID()}`,
+    ...(request.senderPath ? { senderPath: request.senderPath, messageType: request.deliveryMode === "trigger_turn" ? "NEW_TASK" : "MESSAGE" } as const : {}),
     isMeta: true,
     message: request.message,
     origin: {
@@ -1143,6 +1254,15 @@ async function runAgentToCompletion(
     {
       agentId: lifecycle.agentId,
       agentType: request.agentType,
+      multiAgent: request.multiAgent,
+      userInitiated: request.userInitiated,
+      forkHistory: request.forkHistory,
+      parentSessionId: request.sessionId,
+      inheritedToolAllowlist: request.inheritedToolAllowlist,
+      inheritedPermissionMode: request.inheritedPermissionMode,
+      inheritedPlanEnabled: request.inheritedPlanEnabled,
+      inheritedDeveloperInstructions: request.inheritedDeveloperInstructions,
+      inheritedUserInstructions: request.inheritedUserInstructions,
       allowedTools: resolveAllowedTools(lifecycle.profile, options),
       // 显式 background Agent 的 child tool 会被镜像到父会话；
       // 过去丢失这个来源会让父 turn 把仍在运行的 child tool 误当前台孤儿收口。这里必须
@@ -1306,7 +1426,7 @@ function guardSubagentPromiseWithAbort<T>(
         reject(
           createCoreError(
             CoreErrorType.ToolCancelled,
-            "Agent was cancelled before the subagent returned findings or background launch completed",
+            AGENT_WAIT_CANCELLED_MESSAGE,
             {
               cause: signal.reason instanceof Error ? signal.reason : undefined,
               context: {
@@ -1419,7 +1539,8 @@ function createMessageSinkRegistration(
       ...task,
       messageSink: sink,
     }));
-    void flushPendingMessages(options, lifecycle, registry, sink);
+    // V2 邮箱在真实 active turn 的首个模型边界消费；注册时重试会错过短 turn，或在消费后重复送达。
+    if (!sink.retainsUntilConsumed) void flushPendingMessages(options, lifecycle, registry, sink);
   };
 }
 
@@ -1460,6 +1581,7 @@ function createRuntimeTaskSnapshot(input: {
   status: RuntimeTaskSnapshot["status"];
 }): RuntimeTaskSnapshot {
   return {
+    ...(input.request.multiAgent ? { multiAgent: { ...input.request.multiAgent, resident: true, runGeneration: input.lifecycle.runGeneration } } : {}),
     taskId: input.lifecycle.agentId,
     agentId: input.lifecycle.agentId,
     agentType: input.request.agentType,
@@ -1480,7 +1602,8 @@ function createRuntimeTaskSnapshot(input: {
 }
 
 function withoutRuntimeMessageState(task: RuntimeTaskSnapshot): RuntimeTaskSnapshot {
-  const { messageSink: _messageSink, pendingMessages: _pendingMessages, ...snapshot } = task;
+  const { messageSink: _messageSink, ...snapshot } = task;
+  // 已接收但未交付的消息属于 Agent 身份，终态/卸载不能把它们当作执行临时态丢弃。
   return snapshot;
 }
 
@@ -1510,7 +1633,7 @@ async function finalizeBackgroundCompletion(
   completed: { output: AgentCompletedOutput },
 ): Promise<void> {
   const current = registry.get(lifecycle.agentId);
-  if (current && isTerminalRuntimeTask(current)) return;
+  if (!current || isTerminalRuntimeTask(current) || (current.multiAgent && current.multiAgent.runGeneration !== lifecycle.runGeneration)) return;
 
   await writeCompletedAgentArtifacts(lifecycle, request, completed.output);
   const notification = formatLocalAgentTaskNotification({
@@ -1527,27 +1650,36 @@ async function finalizeBackgroundCompletion(
     usage: completed.output.usage,
   });
   const completedAt = new Date();
-  const task = registry.update(lifecycle.agentId, (current) => ({
-    ...withoutRuntimeMessageState(current),
-    status: "completed",
-    completedAt,
-    output: completed.output,
-    usage: {
-      durationMs: completed.output.totalDurationMs,
-      modelUsage: completed.output.usage,
-      toolUseCount: completed.output.totalToolUseCount,
-      totalTokens: completed.output.totalTokens,
-    },
-  }));
+  let committed = false;
+  const task = registry.update(lifecycle.agentId, (current) => {
+    if (isTerminalRuntimeTask(current) || (current.multiAgent && current.multiAgent.runGeneration !== lifecycle.runGeneration)) return current;
+    committed = true;
+    return {
+      ...withoutRuntimeMessageState(current),
+      ...(current.multiAgent ? { multiAgent: { ...current.multiAgent, resident: false } } : {}),
+      status: "completed",
+      completedAt,
+      output: completed.output,
+      usage: {
+        durationMs: completed.output.totalDurationMs,
+        modelUsage: completed.output.usage,
+        toolUseCount: completed.output.totalToolUseCount,
+        totalTokens: completed.output.totalTokens,
+      },
+    };
+  });
+  if (!committed || !task) return;
   enqueueBackgroundNotification(
     options,
     registry,
     lifecycle.agentId,
     notification,
     lifecycle.runTraceContext,
+    lifecycle.runGeneration,
   );
   if (task) {
     await emitBackgroundTaskCompletedEvent(options, request, lifecycle.runTraceContext, task);
+    await emitMultiAgentCompletedActivity(options, task, lifecycle.runTraceContext);
   }
 
   await emitSubagentEvent(
@@ -1589,7 +1721,7 @@ async function finalizeBackgroundFailure(
   error: unknown,
 ): Promise<void> {
   const current = registry.get(lifecycle.agentId);
-  if (current && isTerminalRuntimeTask(current)) return;
+  if (!current || isTerminalRuntimeTask(current) || (current.multiAgent && current.multiAgent.runGeneration !== lifecycle.runGeneration)) return;
 
   // background runner 收到的通常是 Turn failure wrapper，直接读 message
   // 会把 provider 的 429 原文替换成通用的 “Turn execution failed”；这里只选择
@@ -1608,21 +1740,28 @@ async function finalizeBackgroundFailure(
     status: "failed",
     totalDurationMs,
   });
-  const task = registry.update(lifecycle.agentId, (current) => ({
-    ...withoutRuntimeMessageState(current),
-    status: "failed",
-    completedAt,
-    error: errorMessage,
-    usage: {
-      durationMs: totalDurationMs,
-    },
-  }));
+  let committed = false;
+  const task = registry.update(lifecycle.agentId, (current) => {
+    if (isTerminalRuntimeTask(current) || (current.multiAgent && current.multiAgent.runGeneration !== lifecycle.runGeneration)) return current;
+    committed = true;
+    return {
+      ...withoutRuntimeMessageState(current),
+      status: "failed",
+      completedAt,
+      error: errorMessage,
+      usage: {
+        durationMs: totalDurationMs,
+      },
+    };
+  });
+  if (!committed || !task) return;
   enqueueBackgroundNotification(
     options,
     registry,
     lifecycle.agentId,
     notification,
     lifecycle.runTraceContext,
+    lifecycle.runGeneration,
   );
   if (task) {
     await emitBackgroundTaskCompletedEvent(options, request, lifecycle.runTraceContext, task);
@@ -1683,6 +1822,7 @@ function createBackgroundStoppedTask(
   const stopped: RuntimeTaskSnapshot = {
     ...withoutRuntimeMessageState(current),
     status: BACKGROUND_AGENT_STOPPED_STATE.registryStatus,
+    ...(current.multiAgent ? { multiAgent: { ...current.multiAgent, resident: false } } : {}),
     completedAt,
     error: BACKGROUND_AGENT_STOPPED_STATE.message,
     usage: {
@@ -1710,11 +1850,16 @@ async function finalizeBackgroundStopped(
     totalDurationMs: stopped.totalDurationMs,
   });
   await writeStoppedAgentArtifacts(stopped.task);
-  registry.update(stopped.task.taskId, (current) => ({
-    ...stopped.task,
-    notified: current.notified,
-  }));
-  const enqueued = enqueueBackgroundNotification(
+  if (stopped.task.multiAgent && registry.get(stopped.task.taskId)?.multiAgent?.runGeneration !== stopped.task.multiAgent.runGeneration) return registry.get(stopped.task.taskId);
+  // V2 Stop already committed before I/O. Keep mail accepted during that await in its owner.
+  if (!stopped.task.multiAgent) {
+    registry.update(stopped.task.taskId, (current) => ({
+      ...stopped.task,
+      notified: current.notified,
+    }));
+  }
+  // V2 中断只发布真实状态，不把“停止”伪装为 FINAL_ANSWER 投入父级模型邮箱。
+  const enqueued = stopped.task.multiAgent ? true : enqueueBackgroundNotification(
     options,
     registry,
     stopped.task.taskId,
@@ -1722,7 +1867,7 @@ async function finalizeBackgroundStopped(
     stopped.traceContext,
   );
   if (!enqueued) {
-    registry.register(stopped.previousTask);
+    if (!stopped.task.multiAgent) registry.register(stopped.previousTask);
     throw new Error(
       `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
     );
@@ -1806,7 +1951,7 @@ async function emitRuntimeTaskBackgroundCompletedEvent(
       traceId: traceContext.traceId,
     },
   );
-  await options.emitParentEvent(event, traceContext);
+  await publishSubagentTreeEvent(options, event, traceContext, task);
 }
 
 async function emitRuntimeTaskSubagentStoppedEvent(
@@ -1835,7 +1980,7 @@ async function emitRuntimeTaskSubagentStoppedEvent(
       traceId: traceContext.traceId,
     },
   );
-  await options.emitParentEvent(event, traceContext);
+  await publishSubagentTreeEvent(options, event, traceContext, task);
 }
 
 function enqueueBackgroundNotification(
@@ -1844,7 +1989,15 @@ function enqueueBackgroundNotification(
   taskId: string,
   message: string,
   traceContext: TraceContext,
+  expectedGeneration?: number,
 ): boolean {
+  const v2Task = registry.get(taskId);
+  if (v2Task?.multiAgent && expectedGeneration !== undefined && v2Task.multiAgent.runGeneration !== expectedGeneration) return false;
+  if (v2Task?.multiAgent && !v2Task.notified) {
+    notifyMultiAgentParent(options.multiAgentRegistry ?? registry, v2Task, message);
+    registry.update(taskId, (current) => ({ ...current, notified: true }));
+    return true;
+  }
   if (!options.enqueueParentTaskNotification) {
     options.logger?.warn("Skipped subagent background notification without parent queue", {
       ...traceContextToLogContext(traceContext),
@@ -1924,11 +2077,83 @@ async function emitSubagentEvent(
   traceContext: TraceContext,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const event = createSessionEvent(type, request.sessionId, payload, {
+  const effective = request.multiAgent
+    ? (options.multiAgentRegistry ?? options.runtimeTaskRegistry)?.get(request.multiAgent.agentId)?.multiAgent : undefined;
+  const event = createSessionEvent(type, request.sessionId, {
+    ...payload,
+    ...(request.multiAgent ? { agentPath: request.multiAgent.agentPath, parentAgentPath: request.multiAgent.parentPath,
+      rootSessionId: request.multiAgent.rootSessionId,
+      ...(effective?.nickname ? { nickname: effective.nickname } : {}),
+      ...(effective?.model ? { model: effective.model } : {}),
+      reasoningEffort: effective?.reasoningEffort ?? request.multiAgent.reasoningEffort,
+      ...(effective?.lifetimeUsage ? { multiAgentUsage: effective.lifetimeUsage } : {}),
+    } : {}),
+  }, {
     turnId: request.turnId,
     traceId: traceContext.traceId,
   });
-  await options.emitParentEvent(event, traceContext);
+  const task = request.multiAgent ? (options.multiAgentRegistry ?? options.runtimeTaskRegistry)?.get(request.multiAgent.agentId) : undefined;
+  await publishSubagentTreeEvent(options, event, traceContext, task);
+}
+
+async function emitMultiAgentCompletedActivity(
+  options: ExploreSubagentPortOptions, task: RuntimeTaskSnapshot, traceContext: TraceContext,
+): Promise<void> {
+  const identity = task.multiAgent;
+  if (!identity?.initiatingTurnId || task.status !== "completed") return;
+  const registry = options.multiAgentRegistry ?? options.runtimeTaskRegistry;
+  const initiatingPath = identity.initiatingAgentPath ?? identity.parentPath;
+  const initiator = Object.values(registry?.all() ?? {}).find((candidate) => candidate.multiAgent?.rootSessionId === identity.rootSessionId
+    && candidate.multiAgent.agentPath === initiatingPath);
+  if (!initiator?.childSessionId) return;
+  const initiatingTurnId = identity.initiatingTurnId as TurnId;
+  const activityTrace = { ...traceContext, sessionId: initiator.childSessionId, turnId: initiatingTurnId };
+  const event = createSessionEvent(SessionEventType.SubagentMessage, initiator.childSessionId, {
+    multiAgentActivity: { id: `subagent-completed-${task.turnId ?? `${task.agentId}_${identity.runGeneration}`}`,
+      kind: "completed", agentId: task.agentId, agentPath: identity.agentPath,
+      initiatingAgentPath: initiatingPath, initiatingTurnId, sourceTurnId: task.turnId, runGeneration: identity.runGeneration },
+  }, { turnId: initiatingTurnId, traceId: traceContext.traceId });
+  try { await publishSubagentTreeEvent(options, event, activityTrace, task); }
+  catch (error) {
+    options.logger?.warn("Could not publish completed activity to the initiating agent", {
+      event: "subagent.completed_activity.failed", agentId: task.agentId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function publishSubagentTreeEvent(
+  options: Pick<ExploreSubagentPortOptions, "emitParentEvent" | "multiAgentRegistry" | "runtimeTaskRegistry">, event: SessionEvent, traceContext: TraceContext, task?: RuntimeTaskSnapshot,
+): Promise<void> {
+  const identity = task?.multiAgent;
+  const payload = identity ? { ...(event.payload as Record<string, unknown>),
+    agentId: task.agentId, agentType: task.agentType, agentPath: identity.agentPath,
+    parentAgentPath: identity.parentPath, rootSessionId: identity.rootSessionId,
+    parentSessionId: task.parentSessionId, childSessionId: task.childSessionId,
+    ...(identity.model ? { model: identity.model } : {}), reasoningEffort: identity.reasoningEffort,
+    ...(identity.lifetimeUsage ? { multiAgentUsage: identity.lifetimeUsage } : {}),
+  } : event.payload;
+  await options.emitParentEvent({ ...event, payload }, traceContext);
+  if (!identity || identity.rootSessionId === event.sessionId) return;
+  const destinations = new Set<SessionId>();
+  const registry = options.multiAgentRegistry ?? options.runtimeTaskRegistry;
+  // 只投 Root 会漏掉中间祖先，导致套娃详情的下级数被后续 live 行覆盖成直接子代理数。
+  // 从同一 Registry 读取真实祖先，各会话只投影一次；不投聊天正文，也不准入模型轮次。
+  for (const ancestor of Object.values(registry?.all() ?? {})) {
+    if (ancestor.multiAgent?.rootSessionId === identity.rootSessionId && ancestor.childSessionId
+      && identity.agentPath.startsWith(`${ancestor.multiAgent.agentPath}/`)
+      && ancestor.childSessionId !== event.sessionId) destinations.add(ancestor.childSessionId);
+  }
+  destinations.add(identity.rootSessionId as SessionId);
+  for (const sessionId of destinations) {
+    // 后代的 turn ID 不能冒充祖先的当前轮次。
+    const projected = createSessionEvent(event.type, sessionId, { ...(payload as Record<string, unknown>),
+      multiAgentTreeProjection: true,
+      ...(sessionId === identity.rootSessionId ? { multiAgentRootProjection: true } : {}),
+      sourceSessionId: event.sessionId, sourceTurnId: event.turnId,
+    }, { traceId: event.traceId });
+    await options.emitParentEvent(projected, { ...traceContext, sessionId, turnId: undefined });
+  }
 }
 
 async function writeCompletedAgentArtifacts(

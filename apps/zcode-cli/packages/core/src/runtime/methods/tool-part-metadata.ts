@@ -38,3 +38,14 @@ export function completedToolPartMetadata(result: ToolExecutionResult): Complete
     ...(result.readFileStateMetadata ? { readFileState: result.readFileStateMetadata } : {}),
   };
 }
+
+/** Persist the registered identity alongside MCP presentation for cold/live parity. */
+export function registeredToolPartMetadata(
+  metadata: import("../../tool/types.js").ToolMetadata | undefined,
+): CompletedToolPartMetadata | undefined {
+  const mcp = mcpToolPartMetadata(metadata?.mcpPresentation);
+  return metadata?.multiAgentOperation ? {
+    schemaVersion: COMPLETED_TOOL_PART_METADATA_SCHEMA_VERSION, ...mcp,
+    multiAgentOperation: metadata.multiAgentOperation,
+  } : mcp;
+}

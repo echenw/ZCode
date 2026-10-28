@@ -25,7 +25,7 @@ export async function emitToolCallStarted(
   startTime: number,
   display?: ToolResultDisplayPayload,
   // 解析后的副作用能力（与权限判定同源）：订阅者据此在工具动手前知道「要写了」。
-  capability?: { readOnly?: boolean; sideEffectScope?: ToolSideEffectScope },
+  capability?: { readOnly?: boolean; sideEffectScope?: ToolSideEffectScope; multiAgentOperation?: import("@zcode/contracts").MultiAgentOperation },
 ): Promise<void> {
   await deps.emitEvent({
     id: crypto.randomUUID() as any,
@@ -40,6 +40,7 @@ export async function emitToolCallStarted(
       toolName: toolCall.name,
       startedAt: new Date(startTime),
       display,
+      ...(capability?.multiAgentOperation ? { multiAgentOperation: capability.multiAgentOperation } : {}),
       ...(capability?.readOnly === undefined ? {} : { readOnly: capability.readOnly }),
       ...(capability?.sideEffectScope === undefined
         ? {}

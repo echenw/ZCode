@@ -8,10 +8,7 @@ import { highspeedMessageMetaSchema } from "../highspeed.js";
 import { executionOutputPreviewSchema } from "../execution-output-preview.js";
 import { timestampSchema } from "./core.js";
 import { conversationInputSourceSchema } from "./input-intent.js";
-import {
-  backgroundResultOriginMetaSchema,
-  workflowLaunchMetaSchema,
-} from "./workflow-row-meta.js";
+import { backgroundResultOriginMetaSchema, workflowLaunchMetaSchema } from "./workflow-row-meta.js";
 import { attachmentRefSchema } from "./attachment-ref.js";
 
 // RowBase。rowId：session 内单调、永不复用、事件日志的确定性纯函数。
@@ -116,6 +113,16 @@ export type TurnHeaderRow = z.infer<typeof turnHeaderRowSchema>;
 export const userInputRowSchema = z.object({
   ...rowBaseFields,
   kind: z.literal("userInput"),
+  agentMessage: z
+    .object({
+      messageType: z.enum(["MESSAGE", "NEW_TASK", "FINAL_ANSWER"]),
+      senderPath: z.string(),
+      senderName: z.string().optional(),
+      targetPath: z.string(),
+      targetName: z.string().optional(),
+      body: z.string(),
+    })
+    .optional(),
   inputOrigin: z.enum(["desktop", "mobile"]).optional(),
   botGroupSource: botGroupInputSourceSchema.optional(),
   conversationQuotes: conversationQuotesSchema.optional(),
@@ -203,6 +210,8 @@ export const cuaAppIdentitySchema = z
 export type CuaAppIdentity = z.infer<typeof cuaAppIdentitySchema>;
 
 export const toolCallRowSchema = z.object({
+  // Only the Host projects the registered V2 operation; retain the actual wire toolName.
+  multiAgentOperation: z.enum(["spawn_agent", "send_message", "followup_task", "list_agents", "wait_agent", "interrupt_agent"]).optional(),
   ...rowBaseFields,
   kind: z.literal("toolCall"),
   // 同一模型 response 的正文与工具共享此 ID；optional 兼容旧 snapshot。
@@ -264,12 +273,21 @@ export type ArtifactRow = z.infer<typeof artifactRowSchema>;
 
 // subagent。前提：subagent 镜像事件必须进事件日志。
 export const subagentRowSchema = z.object({
+  nickname: z.string().optional(),
   ...rowBaseFields,
   kind: z.literal("subagent"),
+  agentPath: z.string().optional(),
+  parentAgentPath: z.string().optional(),
+  parentSessionId: z.string().optional(),
+  rootSessionId: z.string().optional(),
+  modelId: z.string().optional(),
+  providerId: z.string().optional(),
+  reasoningEffort: z.string().optional(),
+  totalTokens: z.number().int().nonnegative().optional(),
   // 触发该子智能体的 Agent/Task 工具调用；并发 spawn 顺序不可作为关联依据。
   parentToolCallId: z.string().optional(),
   subagentType: z.string(),
-  status: z.enum(["running", "success", "failed", "cancelled"]),
+  status: z.enum(["running", "success", "failed", "cancelled", "lost"]),
   summaryText: z.string(),
   // 存在 → UI 可下钻订阅 conversation/<childSessionId>（不内嵌 child rows）。
   childSessionId: z.string().optional(),

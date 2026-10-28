@@ -8,6 +8,10 @@ import type { ToolCallId, TraceId } from "../interfaces/shared.js";
 import type { ModelUsage } from "../model/index.js";
 import { toToolJsonSchema } from "./json-schema.js";
 
+// Main Stop 在 V2 只结束前台等待；同一回执不能声称已经终止独立运行的子代理。
+export const AGENT_WAIT_CANCELLED_MESSAGE =
+  "The foreground Agent wait was cancelled. This does not establish whether the child agent stopped. In Multi-Agent V2, already accepted children continue independently after Main Stop. Query the live agent/task state; do not interrupt surviving children unless the user explicitly requests it.";
+
 export const AgentType = {
   GeneralPurpose: "general-purpose",
   Explore: "Explore",

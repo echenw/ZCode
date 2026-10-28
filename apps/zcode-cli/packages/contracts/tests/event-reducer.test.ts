@@ -348,7 +348,7 @@ describe("EventReducer", () => {
             totalTokens: 640,
           },
         }),
-        createSessionEvent(SessionEventType.ModelComplete, sessionId, {
+        createSessionEvent(SessionEventType.ModelComplete, "other-child-session" as SessionId, {
           content: "subagent answer",
           querySource: "subagent",
           stopReason: "stop",
@@ -371,6 +371,18 @@ describe("EventReducer", () => {
 
       const projection = reducer.reduce(events);
       expect(projection.contextUsed).toBe(17_778);
+    });
+
+    it("uses the subagent model usage only for the child's own session projection", () => {
+      const childId = "child-context-session" as SessionId;
+      const projection = reducer.reduce([
+        createSessionEvent(SessionEventType.SessionCreated, childId, { mode: "build", contextWindow: 960000 }),
+        createSessionEvent(SessionEventType.ModelComplete, childId, {
+          querySource: "subagent", content: "done", stopReason: "stop",
+          usage: { inputTokens: 1234, outputTokens: 10, totalTokens: 1244 },
+        }),
+      ]);
+      expect(projection.contextUsed).toBe(1244);
     });
 
     it("should project the current session goal from target_changed events", () => {

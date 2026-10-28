@@ -16,7 +16,7 @@ import {
   projectToolNameForNonEmptyBoundary,
 } from "./tool-part-persistence.js";
 import { persistToolModelStepFinish } from "./turn-step-finish.js";
-import { mcpToolPartMetadata } from "./tool-part-metadata.js";
+import { registeredToolPartMetadata } from "./tool-part-metadata.js";
 import { drainInlineGuideForNextRequest } from "./turn-guide-drain.js";
 import { handleToolCallAnomalyWarnings } from "./turn-tool-warnings.js";
 import type { RegularTurnLoopState } from "./turn-loop-state.js";
@@ -76,7 +76,7 @@ export async function executeToolCallsForModelStep(
           toolCall,
           traceContext: options.modelTraceContext,
           model,
-          metadata: mcpToolPartMetadata(this.registry.getMetadata(toolCall.name)?.mcpPresentation),
+          metadata: registeredToolPartMetadata(this.registry.getMetadata(toolCall.name)),
         });
         await emitStreamingToolLedgerUpdate(this, state.events, options.modelTraceContext, {
           assistantMessageId: options.assistantMessageId,
@@ -110,7 +110,7 @@ export async function executeToolCallsForModelStep(
       toolCall,
       traceContext: options.modelTraceContext,
       model,
-      metadata: mcpToolPartMetadata(this.registry.getMetadata(toolCall.name)?.mcpPresentation),
+      metadata: registeredToolPartMetadata(this.registry.getMetadata(toolCall.name)),
     });
     await emitStreamingToolLedgerUpdate(this, state.events, options.modelTraceContext, {
       assistantMessageId: options.assistantMessageId,
@@ -197,7 +197,7 @@ export async function executeToolCallsForModelStep(
                 input: persisted.input,
                 title: projectedToolName.toolName,
                 metadata:
-                  mcpToolPartMetadata(this.registry.getMetadata(toolCall.name)?.mcpPresentation) ??
+                  registeredToolPartMetadata(this.registry.getMetadata(toolCall.name)) ??
                   {},
                 time: {
                   start: persisted.startedAt,

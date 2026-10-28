@@ -63,3 +63,5 @@ export * from "./performance.js";
 export type { DiffHunk, GitDiff } from "./write.js";
 export * from "./tool-search.js";
 export * from "./deferred-tool-call.js";
+
+export * from "../multi-agent/index.js";

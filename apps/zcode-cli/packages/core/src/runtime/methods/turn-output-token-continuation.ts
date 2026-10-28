@@ -2,7 +2,7 @@ import type { RuntimeModelTextResult } from "../types.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import { toTokenUsageInfo } from "../helpers/index.js";
 import {
-  countContextPrefixMessages,
+  splitRuntimeContextPrefix,
   createRuntimeAssistantEntry,
   createRuntimeUserEntry,
   type RuntimeMessageEntry,
@@ -81,9 +81,12 @@ export function preserveCanonicalContextPrefix(
 ): readonly RuntimeMessageEntry[] {
   // 配置刷新会立即替换 canonical prefix，而恢复链继续持有原子 Turn 的旧
   // prefix。turn-local Compact 若整体回写会撤销刷新，因此只提交转换后的 conversation tail。
+  const canonical = splitRuntimeContextPrefix(currentCanonicalEntries);
+  const local = splitRuntimeContextPrefix(turnLocalEntries);
   return [
-    ...currentCanonicalEntries.slice(0, countContextPrefixMessages(currentCanonicalEntries)),
-    ...turnLocalEntries.slice(countContextPrefixMessages(turnLocalEntries)),
+    ...local.inheritedEntries,
+    ...canonical.contextPrefixEntries,
+    ...local.conversationEntries,
   ];
 }
 

@@ -1,3 +1,6 @@
+import { isTerminalRuntimeTask } from "../../runtime-task/registry.js";
+import { createMultiAgentControl, snapshotMultiAgentForkHistory, multiAgentRootId, assertMultiAgentCapacity, createMultiAgentPersistence } from "../../multi-agent/index.js";
+import { createModelId, createModelProviderId } from "@zcode/contracts";
 /* eslint-disable max-lines -- subagent runtime wiring 集中衔接 child runtime、tool pool、权限、MCP 与 activity watchdog，拆分需单独迁移。 */
 import {
   RESPOND_TO_COORDINATOR_TOOL_NAME,
@@ -64,6 +67,23 @@ import { persistRuntimeModelSelection, sameModelSelection } from "./turn-model.j
 import { getOffPeakExecution, markTemporaryRuntimeSelection } from "../off-peak/runtime.js";
 import { getOffPeakModelBinding } from "../off-peak/model-binding.js";
 
+export async function controlSubagent(
+  this: AgentRuntimeInternal,
+  input: import("@zcode/contracts").SubagentUserControlInput,
+  options?: { traceContext?: import("@zcode/contracts").TraceContext },
+): Promise<import("@zcode/contracts").SubagentUserControlResult> {
+  const control = this.subagentPort?.multiAgent;
+  const workingDirectory = this.config.workingDirectory;
+  if (!control?.controlFromUser || !workingDirectory) {
+    throw createCoreError(CoreErrorType.ConfigurationError, "V2 user agent control is unavailable", { recoverable: true });
+  }
+  return control.controlFromUser(input, {
+    sessionId: this.sessionId, parentToolCallId: "user-agent-control", to: "", message: "", summary: "",
+    workingDirectory, workspaceRoot: workingDirectory,
+    trace: options?.traceContext ?? this.rootTraceContext,
+  });
+}
+
 export function createDefaultSubagentPort(
   this: AgentRuntimeInternal,
   deps: AgentRuntimeDeps,
@@ -72,7 +92,7 @@ export function createDefaultSubagentPort(
     return undefined;
   }
 
-  return createExploreSubagentPort({
+  const port = createExploreSubagentPort({
     logger: this.logger,
     inactivityTimeoutMs: this.config.subagents?.inactivityTimeoutMs,
     autoBackgroundMs: this.config.subagents?.autoBackgroundMs,
@@ -80,8 +100,12 @@ export function createDefaultSubagentPort(
     getAgentDefinitions: this.getAgentDefinitions,
     builtInModelSelectionOverrides: this.config.subagents?.builtInModelSelectionOverrides,
     runtimeTaskRegistry: this.runtimeTaskRegistry,
+    multiAgentRegistry: this.multiAgentRegistry,
+    multiAgentV2: this.config.multiAgentV2,
+    executionHostSessionId: this.sessionId,
+    detachAcceptedChildren: this.config.multiAgentV2?.enabled === true,
     emitParentEvent: async (event, traceContext) => {
-      if (isStaleBranchRuntimeTaskEvent(this, event)) return;
+      if (event.sessionId === this.sessionId && isStaleBranchRuntimeTaskEvent(this, event)) return;
       await this.appendEvent(event, traceContext);
     },
     enqueueParentTaskNotification: (notification) => {
@@ -118,12 +142,32 @@ export function createDefaultSubagentPort(
       try {
         request.reportActivity?.();
         const builtInExplore = isBuiltInExploreAgentProfile(request.profile);
+        const parentSessionId = request.parentSessionId ?? this.sessionId;
         const agentsMdInstructions =
           request.profile.injectAgentsMd !== false
-            ? this.contextSourceSnapshot?.userInstructions
+            ? request.inheritedUserInstructions ?? this.config.subagentContext?.userInstructions ?? this.contextSourceSnapshot?.userInstructions
             : undefined;
+        if (request.multiAgent?.model || request.multiAgent?.reasoningEffort) {
+          const parentSelection = this.getSessionModelSelection();
+          const baseSelection = request.profile.modelSelection ?? parentSelection;
+          if (!baseSelection) throw createCoreError(CoreErrorType.ConfigurationError, "No inherited model selection for agent override", { recoverable: true });
+          const modelRef = request.multiAgent.model;
+          const separator = modelRef?.indexOf("/") ?? -1;
+          const selection = {
+            ...baseSelection,
+            ...(modelRef ? {
+              providerId: separator > 0 ? createModelProviderId(modelRef.slice(0, separator)) : baseSelection.providerId,
+              modelId: createModelId(separator > 0 ? modelRef.slice(separator + 1) : modelRef),
+            } : {}),
+            ...(request.multiAgent.reasoningEffort ? { options: { ...baseSelection.options, reasoningLevel: request.multiAgent.reasoningEffort } } : {}),
+          };
+          const validated = resolveSubagentSelection({ profileSelection: selection, parentSelection,
+            resolveSelection: deps.resolveEffectiveModelSelection }).selection;
+          options = { ...options, model: undefined, modelOverride: { selection: validated, background: "allow" } };
+        }
+        const inheritsFullForkModel = request.multiAgent?.forkTurns === "all" && request.multiAgent.roleWasExplicit !== true;
         const { selection: profileChildSelection, hasConcreteModel } = resolveSubagentSelection({
-          profileSelection: request.profile.modelSelection,
+          profileSelection: inheritsFullForkModel ? undefined : request.profile.modelSelection,
           parentSelection: this.getSessionModelSelection(),
           overrideSelection: options?.modelOverride?.selection,
           resolveSelection: deps.resolveEffectiveModelSelection,
@@ -134,6 +178,9 @@ export function createDefaultSubagentPort(
         const childSelection = inheritedModel
           ? modelSelectionFromActiveModel(inheritedModel)
           : profileChildSelection;
+        if (request.multiAgent) this.multiAgentRegistry?.update(request.agentId, (task) => ({ ...task,
+          multiAgent: { ...task.multiAgent!, model: `${childSelection.providerId}/${childSelection.modelId}`,
+            reasoningEffort: childSelection.options?.reasoningLevel } }));
         const embeddedSearchEnabled = resolveSubagentEmbeddedSearchEnabled();
         const baseChildEnvInfo = this.contextSourceSnapshot?.envInfo ??
           this.config.envInfo ?? {
@@ -153,6 +200,14 @@ export function createDefaultSubagentPort(
           builtInExplore && request.systemPrompt?.trim() === ""
             ? buildExploreAgentPrompt({ embeddedSearchEnabled })
             : request.systemPrompt?.trim();
+        // Default children inherit developer guidance. Explicit and specialized roles
+        // retain their own instructions; an empty override suppresses inheritance.
+        const roleOverridesDeveloperInstructions = request.multiAgent !== undefined &&
+          (request.multiAgent.roleWasExplicit === true || request.profile.source !== "built-in" || builtInExplore);
+        const developerInstructions = request.multiAgent && !roleOverridesDeveloperInstructions
+          ? request.inheritedDeveloperInstructions ?? this.config.multiAgentV2?.subagentDeveloperInstructions?.trim() ??
+            this.config.subagentContext?.developerInstructions ?? this.config.systemPrompt
+          : undefined;
         const persistentMemory = await loadPersistentAgentMemory({
           fileSystemPort: deps.fileSystemPort,
           logger: this.logger,
@@ -186,17 +241,24 @@ export function createDefaultSubagentPort(
           request,
           officialCuaServerNames,
         );
-        const childToolAllowlist = resolveSubagentToolAllowlist.call(
+        const resolvedChildToolAllowlist = resolveSubagentToolAllowlist.call(
           this,
           request,
           childMcpAccess.snapshot?.tools.map((descriptor) => toMcpToolName(descriptor)) ?? [],
         );
+        const childToolAllowlist = request.inheritedToolAllowlist
+          ? resolvedChildToolAllowlist.filter((tool) => request.inheritedToolAllowlist!.includes(tool) || tool === RESPOND_TO_COORDINATOR_TOOL_NAME)
+          : resolvedChildToolAllowlist;
         validateSubagentMcpRequirements(request, childToolAllowlist, childMcpAccess);
-        const childMode = resolveSubagentPermissionMode(
-          this.getPlanEnabled() ? "plan" : this.config.mode,
-          request.permissionMode,
-          builtInExplore,
+        const requestedChildMode = resolveSubagentPermissionMode(
+          request.multiAgent ? this.config.mode : this.getPlanEnabled() ? "plan" : this.config.mode,
+          request.permissionMode, builtInExplore,
         );
+        const childMode = request.multiAgent ? restrictMultiAgentPermissionMode(
+          this.config.mode, request.inheritedPermissionMode, requestedChildMode === "plan" ? this.config.mode : requestedChildMode,
+        ) : requestedChildMode;
+        const childPlanEnabled = this.getPlanEnabled() || request.inheritedPlanEnabled === true
+          || request.inheritedPermissionMode === "plan" || requestedChildMode === "plan";
         const childCuaPolicy = createOfficialCuaPolicy(
           officialCuaServerNames,
           childMcpAccess.parentSnapshot?.tools ?? childMcpAccess.snapshot?.tools ?? [],
@@ -242,7 +304,7 @@ export function createDefaultSubagentPort(
             agentType: request.agentType,
             childSessionId: request.sessionId,
             description: request.description,
-            parentSessionId: this.sessionId,
+            parentSessionId,
             parentToolCallId,
             ...(request.traceContext.turnId === undefined
               ? {}
@@ -255,7 +317,7 @@ export function createDefaultSubagentPort(
         const childBrowserControlPort =
           this.browserControlPort?.forChildSession?.({
             childSessionId: request.sessionId,
-            parentSessionId: this.sessionId,
+            parentSessionId,
             tabOwner: "parent",
           }) ?? this.browserControlPort;
         const mirroredToolNameByChildToolCallId = new Map<string, string>();
@@ -266,7 +328,7 @@ export function createDefaultSubagentPort(
           sessionReadyNotified = true;
         };
         this.logger?.debug("Starting subagent child runtime", {
-          parentSessionId: this.sessionId,
+          parentSessionId,
           childSessionId: request.sessionId,
           agentType: request.agentType,
         });
@@ -275,7 +337,7 @@ export function createDefaultSubagentPort(
           {
             // 旧 plan 枚举不包含基础权限；拆分后继承完整状态，避免被构造器回退成 build。
             mode: childMode === "plan" ? this.config.mode : childMode,
-            planEnabled: childMode === "plan",
+            planEnabled: request.multiAgent ? childPlanEnabled : childMode === "plan",
             // 模型选择的影响不只在最终 request.model：MCS、内建搜索与 token/media 预算会在
             // child runtime 内按 default model 预先塑形。同步 child 因此必须把整套执行
             // 配置都指向父 turn 快照；runner 禁止它转后台，provider registry 则由父 turn
@@ -296,13 +358,21 @@ export function createDefaultSubagentPort(
             bashShellSelection,
             // child 只复用父 runtime 已解析的 instructions snapshot；Project Context 仍不继承。
             currentDate: this.contextSourceSnapshot?.currentDate ?? this.config.currentDate,
+            // Preserve effective guidance for recursive delegation. The child builder
+            // renders the profile and separate developer segment exactly once.
+            ...(request.multiAgent ? { systemPrompt: roleOverridesDeveloperInstructions ? baseAgentPrompt : developerInstructions } : {}),
             subagentContext: {
               agentPrompt: agentPrompt ?? "",
+              ...(developerInstructions !== undefined ? { developerInstructions } : {}),
               ...(agentsMdInstructions ? { userInstructions: agentsMdInstructions } : {}),
             },
             agentName: `zcode-${request.agentType}`,
-            maxTurns: request.maxTurns ?? this.config.subagents?.maxTurns ?? 4,
-            parentSessionId: this.sessionId,
+            maxTurns: request.maxTurns ?? this.config.subagents?.maxTurns ?? (builtInExplore ? 4 : 12),
+            multiAgentV2: this.config.multiAgentV2,
+            multiAgentIdentity: request.multiAgent ? { agentPath: request.multiAgent.agentPath,
+              parentPath: request.multiAgent.parentPath, rootSessionId: request.multiAgent.rootSessionId,
+              nickname: this.multiAgentRegistry?.get(request.multiAgent.agentId)?.multiAgent?.nickname } : undefined,
+            parentSessionId,
             taskType: "subagent_child",
             // 动态工作流灰度门必须结构性继承：
             // 父会话关着而子代理开着，等于 Agent 工具变成绕过灰度的后门。默认路径（child 继承
@@ -324,7 +394,11 @@ export function createDefaultSubagentPort(
             nativeSearchEnhancementsEnabled: this.config.nativeSearchEnhancementsEnabled,
             subagents: {
               backgroundBashMaxMs: this.config.subagents?.backgroundBashMaxMs,
-              enabled: false,
+              enabled: this.config.multiAgentV2?.enabled === true && !builtInExplore,
+              profiles: this.config.subagents?.profiles,
+              maxTurns: this.config.subagents?.maxTurns,
+              builtInModelSelectionOverrides: this.config.subagents?.builtInModelSelectionOverrides,
+              outputRootDir: this.config.subagents?.outputRootDir,
             },
             mcp: childMcpAccess.config,
           },
@@ -336,6 +410,8 @@ export function createDefaultSubagentPort(
             agentTelemetryCausationMode: request.background ? "linked_root" : "child",
             eventStore: this.eventStore,
             sessionStore: deps.sessionStore,
+            ...(request.multiAgent ? { runtimeTaskRegistry: this.runtimeTaskRegistry, multiAgentRegistry: this.multiAgentRegistry, multiAgentPersistence: this.multiAgentPersistence,
+              getAgentDefinitions: this.getAgentDefinitions } : {}),
             // 子 runtime 继承父的模型请求准入端口：subagent 的请求 provider 同样看得见，
             // 它们该与父一样喂治理器信号（父是 observer 则子也是 observer）。
             modelRequestAdmission: this.modelRequestAdmission,
@@ -391,7 +467,7 @@ export function createDefaultSubagentPort(
                   background: request.background,
                   childSessionId: request.sessionId,
                   description: request.description,
-                  parentSessionId: this.sessionId,
+                  parentSessionId,
                   parentToolCallId,
                   parentTurnId: request.traceContext.turnId,
                   toolNameByChildToolCallId: mirroredToolNameByChildToolCallId,
@@ -402,7 +478,7 @@ export function createDefaultSubagentPort(
                 // 正文不会污染父 timeline。
                 await this.notifyEventSinks(mirroredEvent, {
                   ...request.traceContext,
-                  sessionId: this.sessionId,
+                  sessionId: parentSessionId,
                 });
               },
             },
@@ -411,7 +487,11 @@ export function createDefaultSubagentPort(
           },
         );
 
+        const childInternal = childRuntime as unknown as AgentRuntimeInternal;
         const resumesExistingChild = request.resumeFromStore === true;
+        const launchExecutionCeiling = request.multiAgent ? {
+          mode: childRuntime.getMode(), planEnabled: childRuntime.getPlanEnabled(),
+        } : undefined;
         if (childBinding)
           markTemporaryRuntimeSelection(
             childRuntime as unknown as AgentRuntimeInternal,
@@ -439,6 +519,13 @@ export function createDefaultSubagentPort(
             persistedMessages,
             traceContext: request.traceContext,
           });
+          if (launchExecutionCeiling) {
+            // 冷恢复会载入旧权限双轴；必须在恢复后再交集，避免旧 yolo 撤销本次父级 Plan/权限上限。
+            await childRuntime.setExecutionState({
+              mode: restrictMultiAgentPermissionMode(launchExecutionCeiling.mode, childRuntime.getMode()),
+              planEnabled: launchExecutionCeiling.planEnabled || childRuntime.getPlanEnabled(),
+            }, request.traceContext);
+          }
           // 恢复只导入历史；本轮 profile 选出的模型仍是执行权威，并更新冷恢复所用的选择记录。
           await persistRuntimeModelSelection(
             childRuntime as unknown as AgentRuntimeInternal,
@@ -450,6 +537,39 @@ export function createDefaultSubagentPort(
           await childRuntime.ensureSessionPersistedForExternalActivity(request.prompt, {
             traceContext: request.traceContext,
           });
+        }
+        if (request.forkHistory?.length && !resumesExistingChild) {
+          await childInternal.ensureContextInitialized(request.traceContext, childModel);
+          const preserveSystemPrefix = this.config.multiAgentV2?.preserveForkPrefix !== false;
+          const inheritedEntries = request.forkHistory.map((message) => ({ message,
+            metadata: { source: "shared_context" as const, inheritedMultiAgentContext: preserveSystemPrefix } }));
+          if (preserveSystemPrefix) {
+            // Keep the valid visible prefix; the child's own system sections follow and replace ancestor identity.
+            // Providers that forbid mid-conversation system roles retain their normal normalization boundary.
+            childInternal.messageHistory.replaceMessages([...inheritedEntries, ...childInternal.messageHistory.toRuntimeEntries()]);
+          } else childInternal.messageHistory.addEntries(inheritedEntries);
+          await deps.sessionStore?.saveSessionEntry?.({ id: `multi_agent_fork:${request.agentId}`, sessionID: request.sessionId,
+            type: "multi_agent/fork_history", time: { created: Date.now(), updated: Date.now() },
+            data: { version: 1, preserveSystemPrefix, messages: request.forkHistory } });
+        } else if (resumesExistingChild && request.multiAgent?.forkTurns === "all") {
+          const forkEntries = await deps.sessionStore?.sessionEntries?.({ sessionID: request.sessionId, type: "multi_agent/fork_history" });
+          const saved = forkEntries?.at(-1)?.data as { version?: number; preserveSystemPrefix?: boolean; messages?: import("@zcode/contracts").ModelInputMessage[] } | undefined;
+          const entries = childInternal.messageHistory.toRuntimeEntries();
+          // Compact already carries inherited facts in its summary; re-inserting the original fork would undo compaction.
+          if (saved?.version === 1 && Array.isArray(saved.messages) && !entries.some((entry) => entry.metadata?.compactBoundary)) {
+            let prefixLength = 0;
+            while (prefixLength < entries.length) {
+              const entry = entries[prefixLength];
+              if (entry?.kind === "attachment" || entry?.message.role === "system") prefixLength++; else break;
+            }
+            const inheritedEntries = snapshotMultiAgentForkHistory(saved.messages, { preserveSystemPrefix: saved.preserveSystemPrefix }).map((message) => ({ message,
+              metadata: { source: "shared_context" as const, inheritedMultiAgentContext: saved.preserveSystemPrefix === true } }));
+            const childPrefix = entries.slice(0, prefixLength);
+            childInternal.messageHistory.replaceMessages([
+              ...(saved.preserveSystemPrefix ? [...inheritedEntries, ...childPrefix] : [...childPrefix, ...inheritedEntries]),
+              ...entries.slice(prefixLength),
+            ]);
+          }
         }
         await notifySessionReady();
         if (
@@ -474,7 +594,7 @@ export function createDefaultSubagentPort(
             traceContext: request.traceContext,
           });
         }
-        request.registerMessageSink?.(createSubagentMessageSink(childRuntime, request));
+        request.registerMessageSink?.(createSubagentMessageSink(childRuntime, { ...request, retainsUntilConsumed: Boolean(request.multiAgent) }));
         try {
           return await childRuntime.executeTurn(request.prompt, undefined, {
             ...(childBinding
@@ -489,17 +609,18 @@ export function createDefaultSubagentPort(
             abortSignal: options?.signal,
             // 子 Runtime 的首轮输入来自父 Agent，而不是真实用户直接输入；保留源事实，避免
             // Subagent Turn 在 Trace 和成功率报表里被误归类为 user。
-            inputSource: "subagent",
-            inputPresentation: "coordinator_input",
+            inputSource: request.userInitiated ? undefined : "subagent",
+            inputPresentation: request.userInitiated ? "user_steer" : "coordinator_input",
             traceContext: request.traceContext,
           });
         } finally {
           const cancelled = options?.signal?.aborted === true;
-          childRuntime.sealBackgroundTaskNotifications({
+          if (request.multiAgent) childRuntime.beginShutdown();
+          if (!request.multiAgent) childRuntime.sealBackgroundTaskNotifications({
             reason: cancelled ? "subagent_cancelled" : "subagent_terminal",
             traceContext: request.traceContext,
           });
-          if (cancelled) {
+          if (cancelled && !request.multiAgent) {
             await childRuntime.cancelRunningRuntimeBackgroundTasks({
               reason: "subagent_cancelled",
               traceContext: request.traceContext,
@@ -519,6 +640,59 @@ export function createDefaultSubagentPort(
       }
     },
   });
+  if (this.config.multiAgentV2?.enabled && this.config.multiAgentIdentity && this.multiAgentRegistry) {
+    const identity = this.config.multiAgentIdentity;
+    const v2Config = this.config.multiAgentV2;
+    const owner = this.multiAgentRegistry;
+    const prepareLegacy = <T extends import("@zcode/contracts").SubagentRunRequest>(request: T): T => {
+      const prepared = { ...request,
+        inheritedToolAllowlist: request.inheritedToolAllowlist ?? this.getTools().map((tool) => tool.name),
+        inheritedPermissionMode: request.inheritedPermissionMode ?? this.config.mode,
+        inheritedPlanEnabled: request.inheritedPlanEnabled ?? (request.inheritedPermissionMode === "plan" || this.getPlanEnabled()),
+        inheritedDeveloperInstructions: request.inheritedDeveloperInstructions
+          ?? this.config.multiAgentV2?.subagentDeveloperInstructions?.trim()
+          ?? this.config.subagentContext?.developerInstructions ?? this.config.systemPrompt ?? "",
+        inheritedUserInstructions: request.inheritedUserInstructions ?? this.config.subagentContext?.userInstructions ?? this.contextSourceSnapshot?.userInstructions,
+      };
+      if (request.multiAgent) return prepared;
+      assertMultiAgentCapacity(owner, identity, v2Config);
+      const agentId = `agent_${crypto.randomUUID()}`;
+      return { ...prepared, multiAgent: { agentId, agentPath: `${identity.agentPath}/legacy_${agentId.slice(6).replaceAll("-", "")}`,
+        parentPath: identity.agentPath, rootSessionId: identity.rootSessionId, forkTurns: "none" } };
+    };
+    const launch = port.launch.bind(port);
+    const run = port.run.bind(port);
+    const start = port.start?.bind(port);
+    port.launch = (request, options) => launch(prepareLegacy(request), options);
+    port.run = (request, options) => run(prepareLegacy(request), options);
+    if (start) port.start = (request, options) => start(prepareLegacy(request), options);
+    if (identity.agentPath === "/root") owner.subscribe?.(() => {
+      // Completed descendants must not keep their unloaded parent's entire Runtime alive via a closure.
+      // The root rebinds only execution behavior; saved parent/session/profile/permission facts stay in the owner.
+      for (const task of Object.values(owner.all())) {
+        if (task.multiAgent?.rootSessionId === identity.rootSessionId && task.resumeState && isTerminalRuntimeTask(task)
+          && task.control?.executionHostSessionId !== this.sessionId) port.restoreTask?.(task.taskId);
+      }
+    });
+    if (!this.multiAgentPersistence && identity.agentPath === "/root" && this.sessionStore) {
+      this.multiAgentPersistence = createMultiAgentPersistence({ registry: owner, identity, store: this.sessionStore,
+        restoreTask: (taskId) => port.restoreTask?.(taskId),
+        onError: (error) => this.logger?.error("Multi-agent graph persistence failed", error instanceof Error ? error : new Error(String(error))),
+      });
+    }
+    port.multiAgent = createMultiAgentControl({ registry: this.multiAgentRegistry, runner: port, persistence: this.multiAgentPersistence,
+      identity: this.config.multiAgentIdentity, config: this.config.multiAgentV2,
+      getForkHistory: () => snapshotMultiAgentForkHistory(this.messageHistory.toRuntimeEntries()
+        .flatMap((entry) => entry.kind === "attachment" ? [] : [entry.message]),
+        { preserveSystemPrefix: this.config.multiAgentV2?.preserveForkPrefix !== false }),
+    });
+    if (this.config.multiAgentIdentity.agentPath === "/root") {
+      this.multiAgentRegistry.update(multiAgentRootId(this.config.multiAgentIdentity.rootSessionId), (task) => ({ ...task,
+        messageSink: createSubagentMessageSink(this, { traceContext: this.rootTraceContext, retainsUntilConsumed: true }),
+      }));
+    }
+  }
+  return port;
 }
 
 function resolveSubagentEmbeddedSearchEnabled(): boolean {
@@ -620,13 +794,14 @@ function resolveSubagentToolAllowlist(
     ];
     return appendCoordinatorResponseTool(
       [...new Set(availableToolNames)]
-        .filter((toolName) => !isSubagentDispatchToolName(toolName))
+        .filter((toolName) => this.config.multiAgentV2?.enabled === true || !isSubagentDispatchToolName(toolName))
         .filter((toolName) => filterSubagentChildToolNames([toolName], disallowedRules).length > 0),
     );
   }
   if (request.allowedTools.length > 0) {
     return appendCoordinatorResponseTool(
-      filterSubagentChildToolNames(request.allowedTools, disallowedRules),
+      filterSubagentChildToolNames(request.allowedTools, disallowedRules).filter((toolName) =>
+        this.config.multiAgentV2?.enabled !== true || this.getTools().some((tool) => tool.name === toolName) || visibleMcpToolNames.includes(toolName)),
     );
   }
   return appendCoordinatorResponseTool([]);
@@ -1019,4 +1194,16 @@ function traceStringAttribute(
 ): string | undefined {
   const value = traceContext.attributes?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function restrictMultiAgentPermissionMode(...modes: Array<AgentRuntimeInternal["config"]["mode"]>): AgentRuntimeInternal["config"]["mode"] {
+  // Guarded 的普通工具等同 YOLO；Auto 则是尚未实现的硬拒绝，不能按名称猜测收紧顺序。
+  // 旧快照的单轴 Plan 无基础权限来源，兼容为 Build；Plan 布尔值由独立轴保留。
+  const effective = modes.filter((mode): mode is NonNullable<typeof mode> => mode !== undefined)
+    .map((mode) => mode === "plan" ? "build" : mode);
+  if (effective.includes("auto")) return "auto";
+  if (effective.includes("build")) return "build";
+  if (effective.includes("edit")) return "edit";
+  if (effective.includes("guarded")) return "guarded";
+  return effective[0];
 }

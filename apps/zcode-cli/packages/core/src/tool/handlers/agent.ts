@@ -4,6 +4,7 @@
 
 import {
   AgentErrorCode,
+  AGENT_WAIT_CANCELLED_MESSAGE,
   AgentInputJsonSchema,
   AgentInputSchema,
   AgentOutputSchema,
@@ -261,8 +262,7 @@ export const agentToolEntry: ToolEntry = {
   cancellation: {
     supported: true,
     cleanup: "bestEffort",
-    userVisibleMessage:
-      "Agent was cancelled before the subagent returned findings or background launch completed",
+    userVisibleMessage: AGENT_WAIT_CANCELLED_MESSAGE,
   },
   trace: {
     required: true,

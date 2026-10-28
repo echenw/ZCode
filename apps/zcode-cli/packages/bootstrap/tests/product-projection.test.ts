@@ -7597,7 +7597,7 @@ describe("fork / modelChange marker", () => {
     });
   });
 
-  it("O10：subagent ModelComplete 只更新 child turn 文件摘要，不覆盖 usage", () => {
+  it("O10：subagent 自身的 ModelComplete 同时更新 child 文件摘要和上下文", () => {
     const log = new EventLog();
     log.push(SessionEventType.SessionCreated, { mode: "default", contextWindow: 200_000 });
     log.push(
@@ -7642,11 +7642,25 @@ describe("fork / modelChange marker", () => {
       actions: { canRewindFiles: true },
     });
     expect(snapshot.usage.cumulative).toEqual({
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 5,
     });
+    expect(snapshot.usage.contextWindow).toMatchObject({ usedTokens: 150, maxTokens: 999999 });
+  });
+
+  it("O10：其它 session 的 subagent 用量不覆盖父会话上下文", () => {
+    const log = new EventLog();
+    log.push(SessionEventType.SessionCreated, { mode: "default", contextWindow: 200000 });
+    const childLog = new EventLog("other-child");
+    log.events.push(childLog.push(SessionEventType.ModelComplete, {
+      querySource: "subagent", content: "done", stopReason: "stop", contextWindow: 960000,
+      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+    }));
+    const { projection } = runAll(log.events);
+    expect(projection.getSnapshot().usage.contextWindow).toBeNull();
+    expect(projection.getSnapshot().usage.cumulative.inputTokens).toBe(0);
   });
 
   it("O10：普通 TurnStarted 的 user messageId 进入同轮文件摘要锚点", () => {
@@ -10241,5 +10255,31 @@ describe("userInput 行的 epilogueStart（热路径）", () => {
     const rows = projection.getSnapshot().rows.window.filter((row) => row.kind === "userInput");
     expect(rows[0]).toMatchObject({ text: "Summarize\n\n---\nStandard", epilogueStart: 9 });
     expect(rows[1]).not.toHaveProperty("epilogueStart");
+  });
+});
+
+
+describe("agent communication presentation", () => {
+  const carrier = "Message Type: MESSAGE\nTask name: /root\nSender: /root/a\nSender name: Ada\nRecipient name: Main\nPayload:\nCan you review this?";
+  it.each(["coordinator_steer", "user_steer", undefined])("keeps runtime source %s distinct from pasted user text", (inputPresentation) => {
+    const log = new EventLog();
+    log.push(SessionEventType.SessionCreated, { mode: "build", contextWindow: 960000 });
+    log.push(SessionEventType.TurnStarted, { turnNumber: 1, input: "coordinate" }, { turnId: "t" });
+    log.push(SessionEventType.TurnSteerDrained, {
+      pendingInputIds: ["mail"], injectedMessageIds: ["mail-message"], targetTurnId: "t",
+      drainedInputs: [{ pendingInputId: "mail", messageId: "mail-message", text: carrier, delivery: "guide", inputPresentation }],
+    }, { turnId: "t" });
+    const { projection } = runAll(log.events);
+    const row = projection.getSnapshot().rows.window.find((item) => item.kind === "userInput" && item.text === carrier);
+    expect(row?.kind).toBe("userInput");
+    if (row?.kind !== "userInput") throw new Error("Expected preserved input carrier");
+    if (inputPresentation === "coordinator_steer") {
+      expect(row.origin).toBe("mailbox");
+      expect(row.agentMessage).toMatchObject({ senderName: "Ada", targetName: "Main", body: "Can you review this?" });
+      expect(row.actions?.canEdit).toBeUndefined();
+    } else {
+      expect(row.origin).toBe("realUser");
+      expect(row.agentMessage).toBeUndefined();
+    }
   });
 });

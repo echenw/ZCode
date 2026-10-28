@@ -74,6 +74,13 @@ class ConfigStore {
   }
 
   merge(config: RuntimeConfigPatch, scope: ConfigScope): void {
+    if (config.multiAgentV2) {
+      this.set(ConfigKey.MultiAgentV2, {
+        ...DefaultConfig.multiAgentV2,
+        ...this.get(ConfigKey.MultiAgentV2),
+        ...config.multiAgentV2,
+      }, scope);
+    }
     if (config.modelStream?.idleTimeoutMs !== undefined) {
       this.set(ConfigKey.ModelStreamIdleTimeout, config.modelStream.idleTimeoutMs, scope);
     }
@@ -257,6 +264,7 @@ export class ConfigPortImpl implements ConfigPort {
 
   getAll(): RuntimeConfig {
     return {
+      multiAgentV2: this.store.get(ConfigKey.MultiAgentV2) ?? DefaultConfig.multiAgentV2,
       modelStream: {
         idleTimeoutMs:
           this.store.get(ConfigKey.ModelStreamIdleTimeout) ??

@@ -3,6 +3,10 @@ import { SqliteSessionStore } from "@zcode/adapters/storage";
 import { resolvePath, type ConfigResult } from "@zcode/adapters/config";
 import {
   SESSION_ENTRY_MODEL_SELECTION,
+  COMPLETED_TOOL_PART_METADATA_SCHEMA_VERSION,
+  type MessageWithParts,
+  MultiAgentStoredGraphSchema,
+  allocateMultiAgentNicknames,
   parseModelSelectionValue,
   type SessionId,
   type SessionStorePort,
@@ -150,4 +154,101 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
     value !== null &&
     typeof (value as { then?: unknown }).then === "function"
   );
+}
+
+/** 旧图没有名称时按原注册顺序派生展示名；不写数据库、不修改寻址身份。 */
+export async function readPersistedAgentGraph(
+  store: {
+    getSession(id: SessionId): Promise<{ parentID?: SessionId; projectID?: string } | null>;
+    sessionEntries?: SessionStorePort["sessionEntries"];
+  },
+  sessionId: string,
+) {
+  const visited = new Set<string>();
+  let current: string | undefined = sessionId;
+  let project: string | undefined;
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    const session = await store.getSession(current as import("@zcode/contracts").SessionId);
+    if (!session || (project && session.projectID && session.projectID !== project)) return undefined;
+    project ??= session.projectID;
+    const entries = await store.sessionEntries?.({
+      sessionID: current as import("@zcode/contracts").SessionId,
+      type: "multi_agent/graph",
+    });
+    const graph = MultiAgentStoredGraphSchema.safeParse(entries?.at(-1)?.data);
+    if (graph.success && graph.data.rootSessionId === current) {
+      const paths = new Map(graph.data.tasks.map((task) => [task.multiAgent.agentPath, task]));
+      const ids = new Set(graph.data.tasks.map((task) => task.agentId));
+      if (paths.size !== graph.data.tasks.length || ids.size !== graph.data.tasks.length || !paths.has("/root")) return undefined;
+      for (const task of graph.data.tasks) {
+        const identity = task.multiAgent;
+        const parentPath = identity.agentPath === "/root" ? undefined : identity.agentPath.slice(0, identity.agentPath.lastIndexOf("/"));
+        if (!/^\/root(?:\/[a-z0-9_]+)*$/.test(identity.agentPath) || identity.rootSessionId !== current ||
+            (identity.parentPath !== undefined && identity.parentPath !== parentPath) || task.taskId !== task.agentId || !task.childSessionId ||
+            (parentPath && !paths.has(parentPath)) ||
+            (!parentPath && task.childSessionId !== current)) return undefined;
+      }
+      return graph.data;
+    }
+    current = session.parentID;
+  }
+  return undefined;
+}
+
+export async function readPersistedAgentNames(
+  store: Parameters<typeof readPersistedAgentGraph>[0], sessionId: string,
+): Promise<Record<string, string>> {
+  const graph = await readPersistedAgentGraph(store, sessionId);
+  if (!graph) return {};
+  const names: Record<string, string> = {};
+  const allocated = allocateMultiAgentNicknames(graph.tasks.map((task) => task.multiAgent));
+  for (const [index, task] of graph.tasks.entries()) {
+    names[task.multiAgent.agentPath] = allocated[index]!;
+    names[task.agentId] = allocated[index]!;
+    if (task.childSessionId) names[task.childSessionId] = allocated[index]!;
+  }
+  return names;
+}
+
+/** Read the Registry projection through Store, validating each actual transcript edge. No runtime is started. */
+export async function withPersistedSubagentIdentities(input: {
+  sessionId: string;
+  messages: readonly MessageWithParts[];
+  store: {
+    getSession(id: SessionId): Promise<{ projectID?: string; parentID?: SessionId; taskType?: string } | null>;
+    sessionEntries?: SessionStorePort["sessionEntries"];
+  };
+}): Promise<MessageWithParts[]> {
+  const [graph, parent] = await Promise.all([
+    readPersistedAgentGraph(input.store, input.sessionId), input.store.getSession(input.sessionId as SessionId),
+  ]);
+  if (!graph || !parent) return [...input.messages];
+  const parentTask = graph.tasks.find((task) => task.childSessionId === input.sessionId);
+  if (!parentTask) return [...input.messages];
+  const tasks = new Map<string, typeof graph.tasks[number]>();
+  for (const task of graph.tasks) {
+    if (task.multiAgent.parentPath !== parentTask.multiAgent.agentPath || task.parentSessionId !== input.sessionId || !task.parentToolCallId || !task.childSessionId) continue;
+    const child = await input.store.getSession(task.childSessionId as SessionId);
+    // 图只提供身份；真正成员资格仍由持久父关系、项目和当前分支上的创建 call 证明。
+    if (child?.taskType !== "subagent_child" || child.parentID !== input.sessionId || child.projectID !== parent.projectID) continue;
+    tasks.set(task.parentToolCallId, task);
+  }
+  return input.messages.map((message) => ({ ...message, parts: message.parts.map((part) => {
+    if (part.type !== "tool") return part;
+    const task = tasks.get(part.callID);
+    if (!task) return part;
+    const status = task.status === "running" ? "lost" : task.status === "completed" ? "success" :
+      task.status === "failed" ? "failed" : task.status === "lost" ? "lost" : "cancelled";
+    const metadata = { ...part.metadata, ...("metadata" in part.state ? part.state.metadata : {}),
+      schemaVersion: COMPLETED_TOOL_PART_METADATA_SCHEMA_VERSION, multiAgentOperation: "spawn_agent", agentId: task.agentId, childSessionId: task.childSessionId,
+      agentPath: task.multiAgent.agentPath, parentAgentPath: task.multiAgent.parentPath,
+      rootSessionId: graph.rootSessionId, nickname: task.multiAgent.nickname,
+      agentType: task.agentType, description: task.description, model: task.multiAgent.model,
+      reasoningEffort: task.multiAgent.reasoningEffort,
+      subagentLifecycle: { status, startedAt: Date.parse(task.startedAt),
+        stoppedAt: task.completedAt ? Date.parse(task.completedAt) : undefined },
+    };
+    return { ...part, metadata, state: { ...part.state, metadata } };
+  }) }));
 }

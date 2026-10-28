@@ -1,3 +1,5 @@
+import { createMultiAgentToolEntries } from "../../multi-agent/index.js";
+import type { MultiAgentV2Config } from "@zcode/contracts";
 import { replyToChannelToolEntry } from "./reply-to-channel.js";
 // ============================================================
 // Built-in Tool Handlers
@@ -175,6 +177,7 @@ export function isDynamicWorkflowToolName(toolName: string): boolean {
 }
 
 interface RegisterBuiltInToolsOptions {
+  multiAgentV2?: MultiAgentV2Config;
   bashTimeoutPolicy?: BashTimeoutPolicy;
   includeSkill?: boolean;
   includeAgent?: boolean;
@@ -218,7 +221,7 @@ export function registerBuiltInTools(
   const allowedTools = options.allowedTools ? new Set(options.allowedTools) : undefined;
   const disallowedTools = createToolRuleNameSet(options.disallowedTools);
 
-  for (const entry of builtInTools) {
+  for (const entry of [...builtInTools, ...createMultiAgentToolEntries(options.multiAgentV2 ?? {})]) {
     if (
       options.embeddedSearchEnabled === true &&
       (entry.metadata.name === "Glob" || entry.metadata.name === "Grep")

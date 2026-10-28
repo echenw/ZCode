@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createContextBuilder } from "../src/context/index.js";
 import { createTestRuntimeModel } from "./test-runtime-model.js";
+import { multiAgentToolName } from "@zcode/contracts";
 
 import { buildMemorySection } from "../src/context/sections/memory.js";
 import {
@@ -22,6 +23,21 @@ const contextTestModel = createTestRuntimeModel({
   generateText: async () => {
     throw new Error("context rendering must not execute the model");
   },
+});
+
+describe("V2 provider-visible tool naming", () => {
+  it.each(["collaboration", "review-team", "x".repeat(64)])("only describes the actually granted tool alias for %s", (toolNamespace) => {
+    const granted = multiAgentToolName("spawn_agent", toolNamespace);
+    const result = createContextBuilder({ workingDirectory: "/workspace", guidanceToolNames: [granted],
+      envInfo: { cwd: "/workspace", platform: "darwin", shell: "zsh", osVersion: "test", nodeVersion: "24.18.0" },
+      multiAgent: { agentPath: "/root", rootSessionId: "root-session", toolNamespace, delegationMode: "explicit" },
+    }).build();
+    const prompt = result.systemMessages.map((message) => String(message.content)).join("\n");
+    expect(prompt).toContain("- " + granted + ":");
+    expect(prompt).not.toContain(toolNamespace + ".spawn_agent:");
+    expect(prompt).not.toContain(multiAgentToolName("send_message", toolNamespace) + ":");
+    expect(granted.length).toBeLessThanOrEqual(64);
+  });
 });
 
 const DEFAULT_COMMUNICATION_PROMPT =
@@ -1637,5 +1653,91 @@ describe("context builder — workflow actor identity", () => {
       "\nYou are an interactive ZCode agent that helps users with software engineering tasks.\n\nIMPORTANT: Assist with authorized security testing",
     );
     expect(text).toContain("\n\n# Harness\n- Text you output outside of tool use");
+  });
+});
+
+
+describe("Multi-Agent V2 context", () => {
+  const envInfo = { cwd: "/workspace", platform: "darwin", shell: "zsh", osVersion: "test", nodeVersion: "24" };
+  const identity = { agentPath: "/root", rootSessionId: "root-session", toolNamespace: "collaboration", delegationMode: "explicit" as const };
+  const names = ["spawn_agent", "send_message", "followup_task", "list_agents", "wait_agent", "interrupt_agent"];
+  const build = (overrides: Partial<Parameters<typeof createContextBuilder>[0]> = {}) =>
+    createContextBuilder({ workingDirectory: "/workspace", envInfo, multiAgent: identity, guidanceToolNames: names.map((name) => "collaboration." + name), ...overrides }).build();
+  const text = (result: ContextBuildResult) => result.systemMessages.map((message) => String(message.content)).join("\n");
+
+  it("preserves native safety and adds real root identity and exact operation semantics", () => {
+    const rendered = text(build());
+    expect(rendered).toContain("# Harness");
+    expect(rendered).toContain("Task path: /root");
+    expect(rendered).toContain("Root session: root-session");
+    expect(rendered).toContain("collaboration.spawn_agent");
+    expect(rendered).toContain("QueueOnly");
+    expect(rendered).toContain("TriggerTurn");
+    expect(rendered).toContain("does not return message bodies");
+    expect(rendered).toContain("does not delete the agent");
+    expect(rendered).toContain("accepted");
+  });
+
+  it("does not inject collaboration instructions when V2 is disabled", () => {
+    const result = build({ multiAgent: undefined });
+    expect(result.sections.some((section) => section.source === "multi_agent_rules")).toBe(false);
+    expect(text(result)).not.toContain("Task path: /root");
+  });
+
+  it("describes only the current permitted namespace and tools", () => {
+    const result = build({
+      multiAgent: { ...identity, toolNamespace: "team" },
+      guidanceToolNames: ["Read", "team.send_message", "team.list_agents"],
+    });
+    const rendered = text(result);
+    expect(rendered).toContain("team.send_message");
+    expect(rendered).toContain("team.list_agents");
+    expect(rendered).not.toContain("collaboration.");
+    expect(rendered).not.toContain("spawn_agent");
+    expect(rendered).not.toContain("wait_agent");
+    expect(rendered).not.toContain("followup_task");
+  });
+
+  it("keeps child identity separate from the stable collaboration prefix", () => {
+    const one = build({ multiAgent: { ...identity, agentPath: "/root/research/verify", parentPath: "/root/research" } });
+    const two = build({ multiAgent: { ...identity, agentPath: "/root/write", parentPath: "/root" } });
+    expect(one.sections.find((section) => section.source === "multi_agent_rules")?.content)
+      .toBe(two.sections.find((section) => section.source === "multi_agent_rules")?.content);
+    expect(text(one)).toContain("Task path: /root/research/verify");
+    expect(text(one)).toContain("Parent path: /root/research");
+    expect(text(two)).not.toContain("/root/research/verify");
+    expect(one.sections.find((section) => section.source === "multi_agent_identity")?.cacheHint).toBe("dynamic");
+  });
+
+  it("changes delegation guidance without widening runtime permissions", () => {
+    expect(text(build())).toContain("only when the user or applicable instructions explicitly");
+    const rendered = text(build({ multiAgent: { ...identity, delegationMode: "proactive" } }));
+    expect(rendered).toContain("Proactive delegation is authorized");
+    expect(rendered).toContain("current permissions");
+  });
+
+  it("selects configured role hints independently and honors explicit empty overrides", () => {
+    const root = text(build({ multiAgent: { ...identity, rootAgentUsageHintText: "ROOT_HINT", subagentUsageHintText: "CHILD_HINT" } }));
+    expect(root).toContain("ROOT_HINT"); expect(root).not.toContain("CHILD_HINT");
+    expect(root).not.toContain("You coordinate a team");
+    const child = text(build({ multiAgent: { ...identity, agentPath: "/root/a", parentPath: "/root", rootAgentUsageHintText: "ROOT_HINT", subagentUsageHintText: "" } }));
+    expect(child).not.toContain("ROOT_HINT"); expect(child).not.toContain("You are a member of a team");
+    expect(child).toContain("Task path: /root/a"); expect(child).toContain("current permissions");
+  });
+
+  it("uses custom mode guidance while retaining the actual delegation policy", () => {
+    const rendered = text(build({ multiAgent: { ...identity, multiAgentModeHintText: "CUSTOM_MODE_HINT" } }));
+    expect(rendered).toContain("CUSTOM_MODE_HINT");
+    expect(rendered).toContain("Effective delegation policy: explicit");
+    expect(rendered).not.toContain("Delegate only when the user or applicable instructions");
+    expect(text(build({ multiAgent: { ...identity, multiAgentModeHintText: "" } }))).not.toContain("Delegate only when the user or applicable instructions");
+  });
+
+  it("preserves a custom profile and existing mutually exclusive workflow boundary", () => {
+    const rendered = text(build({ customSystemPrompt: "Custom specialist sentinel." }));
+    expect(rendered).toContain("Custom specialist sentinel.");
+    expect(rendered).toContain("Task path: /root");
+    expect(rendered).not.toContain("You are an interactive ZCode agent that helps");
+    expect(() => build({ customSystemPrompt: "Custom", workflowActor: { name: "Actor" } })).toThrow("mutually exclusive");
   });
 });

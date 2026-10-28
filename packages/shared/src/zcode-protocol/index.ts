@@ -1883,6 +1883,14 @@ const zcodeSessionSubagentBaseSchema = z
   .object({
     childSessionId: nonEmptyString,
     agentId: nonEmptyString.optional(),
+    agentPath: nonEmptyString.optional(),
+    parentAgentPath: nonEmptyString.optional(),
+    parentSessionId: nonEmptyString.optional(),
+    rootSessionId: nonEmptyString.optional(),
+    modelId: nonEmptyString.optional(),
+    providerId: nonEmptyString.optional(),
+    reasoningEffort: nonEmptyString.optional(),
+    totalTokens: z.number().int().nonnegative().optional(),
     toolCallId: nonEmptyString.optional(),
     subagentType: nonEmptyString,
     title: nonEmptyString,
@@ -2311,10 +2319,13 @@ export const zcodeBackgroundTaskInfoSchema = z
     terminalId: nonEmptyString.optional(),
   })
   .strict();
+export const zcodeBackgroundTaskCancelScopeSchema = z.enum(["task", "subtree", "tree"]);
+export type ZCodeBackgroundTaskCancelScope = z.infer<typeof zcodeBackgroundTaskCancelScopeSchema>;
 export const zcodeSessionCancelBackgroundTaskParamsSchema = z
   .object({
     sessionId: nonEmptyString,
     taskId: nonEmptyString,
+    scope: zcodeBackgroundTaskCancelScopeSchema.optional(),
   })
   .strict();
 export type ZCodeSessionCancelBackgroundTaskParams = z.infer<
@@ -2323,6 +2334,13 @@ export type ZCodeSessionCancelBackgroundTaskParams = z.infer<
 
 export const zcodeSessionCancelBackgroundTaskResultSchema = z
   .object({
+    scope: zcodeBackgroundTaskCancelScopeSchema.optional(),
+    tasks: z.array(z.object({
+      taskId: nonEmptyString,
+      cancelled: z.boolean(),
+      status: zcodeBackgroundTaskInfoStatusSchema,
+      reason: z.string().optional(),
+    }).strict()).optional(),
     cancelled: z.boolean(),
     reason: z.string().optional(),
     snapshot: zcodeBackgroundTaskInfoSchema.optional(),

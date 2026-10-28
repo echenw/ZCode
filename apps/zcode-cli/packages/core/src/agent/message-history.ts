@@ -62,6 +62,8 @@ export type RuntimeMessageSource =
   | "legacy_synthetic";
 
 export interface RuntimeMessageMetadata {
+  /** Copied V2 parent context is historical, separate from this runtime's rebuildable prefix. */
+  inheritedMultiAgentContext?: boolean;
   compactBoundary?: { boundaryId: string; preCompactDiscoveredTools?: readonly string[] };
   toolSearchAnnouncement?: {
     addedNames: readonly string[];
@@ -288,7 +290,10 @@ export class MessageHistoryImpl implements MessageHistory {
   }
 
   reset(): void {
-    const contextPrefixMessages = this.entries.slice(0, countContextPrefixMessages(this.entries));
+    let inheritedLength = 0;
+    while (this.entries[inheritedLength]?.metadata?.inheritedMultiAgentContext) inheritedLength++;
+    const ownEntries = this.entries.slice(inheritedLength);
+    const contextPrefixMessages = ownEntries.slice(0, countContextPrefixMessages(ownEntries));
     this.entries = contextPrefixMessages.map(cloneRuntimeMessageEntry);
     this.cacheStats = {
       totalMessages: contextPrefixMessages.length,
@@ -312,6 +317,7 @@ export function countContextPrefixMessages(
     }
     const message = messageFromEntryInput(item);
     const metadata = metadataFromEntryInput(item);
+    if (metadata?.inheritedMultiAgentContext) break;
     if (message.role === "system") {
       count++;
       continue;
@@ -331,6 +337,20 @@ export function countContextPrefixMessages(
     break;
   }
   return count;
+}
+
+/** Full forks place inherited history before this agent's own replaceable context. */
+export function splitRuntimeContextPrefix(entries: readonly RuntimeMessageEntry[]): {
+  inheritedEntries: RuntimeMessageEntry[];
+  contextPrefixEntries: RuntimeMessageEntry[];
+  conversationEntries: RuntimeMessageEntry[];
+} {
+  let inheritedLength = 0;
+  while (entries[inheritedLength]?.metadata?.inheritedMultiAgentContext) inheritedLength++;
+  const ownEntries = entries.slice(inheritedLength);
+  const prefixLength = countContextPrefixMessages(ownEntries);
+  return { inheritedEntries: entries.slice(0, inheritedLength), contextPrefixEntries: ownEntries.slice(0, prefixLength),
+    conversationEntries: ownEntries.slice(prefixLength) };
 }
 
 function isMetaUserContext(content: ModelMessageContent): boolean {

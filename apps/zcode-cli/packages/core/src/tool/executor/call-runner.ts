@@ -445,7 +445,8 @@ async function executeToolCallImpl(
       turnId,
       startTime,
       createMcpToolDisplay(entry.metadata.mcpPresentation),
-      resolveToolCallCapabilityFlags(deps, entry, executionInput),
+      { ...resolveToolCallCapabilityFlags(deps, entry, executionInput),
+        ...(entry.metadata.multiAgentOperation ? { multiAgentOperation: entry.metadata.multiAgentOperation } : {}) },
     );
 
     deps.logger?.info("Tool call started", {
@@ -597,6 +598,7 @@ async function executeToolCallImpl(
         modelOutputEntry,
       );
       const display = createToolResultDisplay(canonicalToolCall.name, output, {
+        multiAgentOperation: entry.metadata.multiAgentOperation,
         mcp: entry.metadata.mcpPresentation,
         officialCua: entry.modelContentProtection === OFFICIAL_CUA_FRAME_MODEL_CONTENT_PROTECTION,
       });

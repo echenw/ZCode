@@ -2,7 +2,6 @@ import {
   COMPACT_PROMPT_TOO_LONG_RETRY_MARKER,
   CompactTrigger,
   MAX_COMPACT_PROMPT_TOO_LONG_RETRIES,
-  countContextPrefixMessages,
   estimateMessageTokens,
   modelMessageContentToText,
   traceContextToLogContext,
@@ -11,6 +10,7 @@ import type { TraceContext } from "../deps.js";
 import {
   cloneRuntimeMessageEntry,
   isRuntimeAttachmentEntry,
+  splitRuntimeContextPrefix,
   type RuntimeMessageEntry,
 } from "../../agent/message-history.js";
 import { groupByAssistantStartedRounds } from "../../compact/rounds.js";
@@ -215,9 +215,8 @@ function splitRuntimeEntriesForCompactSelection(
   shouldPreserveRecent: boolean;
 } {
   const entries = inputEntries.map(cloneRuntimeEntry);
-  const prefixCount = countContextPrefixMessages(entries);
-  const prefixEntries = entries.slice(0, prefixCount);
-  const bodyEntries = entries.slice(prefixCount);
+  const { inheritedEntries, contextPrefixEntries: prefixEntries, conversationEntries } = splitRuntimeContextPrefix(entries);
+  const bodyEntries = [...inheritedEntries, ...conversationEntries];
 
   return {
     groups: groupRuntimeEntriesByCompactRound(bodyEntries),

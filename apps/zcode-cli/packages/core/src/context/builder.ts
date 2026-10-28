@@ -13,7 +13,7 @@ import type {
 import type { ToolRegistry } from "../tool/registry.js";
 import { estimateTokens } from "./utils.js";
 import { buildCliPrefixSection } from "./sections/cli-prefix.js";
-import { buildIdentitySection } from "./sections/identity.js";
+import { buildIdentitySection, buildMultiAgentSections } from "./sections/identity.js";
 import { buildWorkflowActorIdentitySection } from "./sections/workflow-actor.js";
 import { buildEnvInfoSection, buildGitSystemContextSection } from "./sections/env-info.js";
 import { buildSkillsSection } from "./sections/skills.js";
@@ -121,6 +121,8 @@ export class ContextBuilder {
     } else {
       sections.push(buildIdentitySection(activeOutputStyle));
     }
+
+    sections.push(...buildMultiAgentSections(this.config.multiAgent, this.config.guidanceToolNames));
 
     // 3. Dynamic system context
     // custom prompt 不是只替换

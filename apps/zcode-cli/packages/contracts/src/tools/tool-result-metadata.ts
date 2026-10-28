@@ -89,6 +89,7 @@ export const fileDiffToolResultDisplayPayloadSchema = z
 export const localAgentMessageToolResultDisplayPayloadSchema = z
   .object({
     kind: z.literal("local_agent_message"),
+    recipientName: z.string().optional(),
     status: z.enum(["success", "failed"]),
     error: z.string().optional(),
     message: z.string().optional(),
@@ -347,6 +348,7 @@ export const completedToolPartMetadataSchema = z
     // 错误结果沿用字符串内容；仅接受数组会使 V4 冷恢复丢弃整份 metadata，包括 display。
     modelContent: z.union([z.string(), PersistedToolSearchContentSchema]).optional(),
     schemaVersion: z.literal(COMPLETED_TOOL_PART_METADATA_SCHEMA_VERSION),
+    multiAgentOperation: z.enum(["spawn_agent", "send_message", "followup_task", "list_agents", "wait_agent", "interrupt_agent"]).optional(),
     display: toolResultDisplayPayloadSchema.optional(),
     serialization: toolResultSerializationMetadataSchema.optional(),
   })

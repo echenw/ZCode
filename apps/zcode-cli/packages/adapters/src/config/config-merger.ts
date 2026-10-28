@@ -42,9 +42,14 @@ export function mergeConfigs(...configs: PrioritizedConfig[]): RuntimeConfigPatc
         : inputConfig;
     const previousHooks = result.hooks;
     const previousPlugins = result.plugins;
+    const previousMultiAgentV2 = result.multiAgentV2;
     Object.assign(result, config);
 
     // Deep merge nested objects
+    if (config.multiAgentV2) {
+      // 分层配置只覆盖声明字段，不能让一个门控覆盖已有 namespace/容量。
+      result.multiAgentV2 = { ...previousMultiAgentV2, ...config.multiAgentV2 };
+    }
     if (config.modelStream) {
       result.modelStream = { ...result.modelStream, ...config.modelStream };
     }

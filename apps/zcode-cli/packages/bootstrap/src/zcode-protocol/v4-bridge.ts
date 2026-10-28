@@ -1,3 +1,4 @@
+import { loadPersistedConversationMaterialization } from "../zcode-protocol-v4/agent-communication/materialize.js";
 import { isReadonlyAgentSessionKind } from "@zcode/shared";
 import { readBackgroundBashOutputFromOwner } from "./background-work-owner.js";
 // v4 网关 binder。
@@ -37,7 +38,6 @@ import {
   readConversationFileChangesFromEvents,
 } from "../zcode-protocol-v4/cold-file-change-summaries.js";
 import {
-  loadPersistedConversationMaterialization,
   mergeColdConversationEvents,
 } from "../zcode-protocol-v4/cold-event-merge.js";
 import { lookupGlobalCreateSessionCommand } from "../zcode-protocol-v4/create-session-command-fact.js";
@@ -95,11 +95,13 @@ import type {
 } from "@zcode/contracts";
 import { HYDRATION_TRACE_ID } from "../zcode-protocol-v4/projection-state.js";
 import { cloneModelSelection, derivedSessionModelSelection } from "./fork-model-selection.js";
+import { readSessionModelSelection } from "../app/session-store.js";
 import { resolveWorkspaceRefFromId } from "./mapper.js";
 import { buildLiveWorkspaceConfigStateV4 } from "./v4-workspace-config.js";
 import {
   hasSessionModelProvider,
   resolveSessionModelContextWindow,
+  resolveDetachedSessionModelContextWindow,
 } from "./workspace-model-runtime.js";
 import {
   afterStateMutation,
@@ -110,6 +112,7 @@ import {
   listSessionSubagents,
   registerForkedSession,
   readSessionContextUsage,
+  resolveConversationBackingRecord,
 } from "./server-operations.js";
 import type {
   ZCodeProtocolAgentServerContext,
@@ -221,22 +224,6 @@ async function replayDynamicWorkflowRunEvents(
     sequenceNumber: 0,
     payload,
   }));
-}
-
-async function resolveConversationBackingRecord(
-  context: ZCodeProtocolAgentServerContext,
-  sessionId: string,
-): Promise<ZCodeProtocolSessionRecord | undefined> {
-  const direct = context.sessions.get(sessionId);
-  if (direct) return direct;
-
-  // 运行中 subagent 有独立 child event log，但没有独立 bootstrap record。
-  // 文件摘要只需要共享 event/artifact store，因此通过持久化 parentID 找到父 record 作为
-  // artifact reader，读取事件时仍显式使用 childSessionId；不能为了只读查询 cold resume
-  // 第二个 child runtime。
-  const stored = await context.deps.sessionStore?.getSession(sessionId as SessionId);
-  const parentSessionId = stored?.parentID ? String(stored.parentID) : null;
-  return parentSessionId ? context.sessions.get(parentSessionId) : undefined;
 }
 
 async function previewConversationFileRewind(
@@ -1986,7 +1973,7 @@ export function createConversationV4Gateway(
       // parentID 落到父 record，只借它的共享 event/artifact store，事件读取仍显式用
       // child 自己的 sessionId（script workflow child runtime 共享父 event store，
       // 事件按 child sessionId 归档），因此 sourceEventSeq 仍是 child 的真实水位。
-      // 代价：contextWindow 分母会按父 record 的当前模型解析而不是 actor 模型，纯展示层偏差。
+      // 容量与用量在下方仍按 child 身份读取，不借父 record 的模型或 projection。
       const record = await resolveConversationBackingRecord(context, sessionId);
       if (!record) {
         // detached live child 继续使用在线尾部；仅显式携带 M0 的冷打开可以独立物化历史。
@@ -2074,13 +2061,27 @@ export function createConversationV4Gateway(
       });
       // 冷恢复 transcript 不保存模型能力，旧 hydration 自行填 20 万；
       // provider registry 已在 resume 前同步完成，应按恢复/退避后的当前模型精确取值。
-      const contextWindow = resolveSessionModelContextWindow(context, record);
+      const ownRecord = context.sessions.get(sessionId);
+      const contextWindow = ownRecord
+        ? resolveSessionModelContextWindow(context, ownRecord)
+        : resolveDetachedSessionModelContextWindow(
+            record,
+            sessionId,
+            source.memoryEvents,
+            store ? await readSessionModelSelection(store, sessionId as SessionId) : undefined,
+          );
       const usageSeed = sessionUsageSeedFromRuntimeContextUsage(
-        await readSessionContextUsage(context, sessionId, source.messages),
+        await readSessionContextUsage(
+          context,
+          sessionId,
+          source.messages,
+          ownRecord ? undefined : { events: source.memoryEvents, contextWindow },
+        ),
         contextWindow,
       );
       const merged = mergeColdConversationEvents({
         contextWindow,
+        agentNames: source.agentNames,
         fileChangeSummariesByMessageId,
         memoryEvents: source.memoryEvents,
         messages: source.messages,

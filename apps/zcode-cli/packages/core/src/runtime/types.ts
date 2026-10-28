@@ -1,3 +1,4 @@
+import type { MultiAgentIdentity, MultiAgentV2Config } from "@zcode/contracts";
 import type { ToolSearchExecutionContext, ToolSearchMode } from "@zcode/contracts";
 import type { RequestVerificationReason } from "@zcode/shared";
 import type { GetAgentDefinitions, LoadAgentDefinitions } from "../subagent/definitions.js";
@@ -120,6 +121,8 @@ import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-
 // -----------------------------------------------
 
 export interface AgentRuntimeConfig {
+  multiAgentV2?: MultiAgentV2Config;
+  multiAgentIdentity?: MultiAgentIdentity;
   toolSearch?: { mode?: ToolSearchMode };
   /** shared-host CUA request routing metadata; desktop is the safe default. */
   clientMode?: "desktop-continuous" | "web-remote-replayable";
@@ -243,6 +246,7 @@ export interface AgentRuntimeConfig {
    */
   subagentContext?: {
     agentPrompt: string;
+    developerInstructions?: string;
     userInstructions?: ResolvedUserInstructions;
   };
   language?: string;
@@ -324,6 +328,9 @@ export interface MemoryRuntimeConfig {
 }
 
 export interface AgentRuntimeDeps {
+  /** Same root task owner; ordinary child task views remain session scoped. */
+  multiAgentRegistry?: RuntimeTaskRegistry;
+  multiAgentPersistence?: import("../multi-agent/index.js").MultiAgentPersistence;
   /** 只读目录入口；必须同步读取内存，不在请求收集阶段进行 I/O。 */
   getAgentDefinitions?: GetAgentDefinitions;
   /** 新父上下文读取一次；子执行不得继承此加载器。 */

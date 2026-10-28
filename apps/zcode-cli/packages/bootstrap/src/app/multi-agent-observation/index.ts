@@ -7,12 +7,11 @@ import {
 } from "@zcode/contracts";
 import type { AgentRuntime } from "@zcode/core";
 import type { ZCodeSessionSubagentsResult } from "@zcode/shared";
-import { projectSessionTranscript, type SessionTranscriptMessage } from "../session-transcript.js";
+import { projectSessionTranscript, type SessionTranscriptMessage } from "../../session-transcript.js";
 import {
-  collectSubagentChildSessionIds,
   paginateEndedSubagents,
-  projectSessionSubagents,
-} from "../zcode-protocol/subagent-session-query.js";
+  readSubagentTree,
+} from "../../zcode-protocol/subagent-session-query.js";
 
 export interface SubagentTranscriptSnapshot {
   sessionId: string;
@@ -38,44 +37,16 @@ export function createSubagentObservation(deps: ObservationDeps) {
       const parentSession = await deps.sessionStore.getSession(deps.sessionId);
       if (!parentSession)
         return { revision: 0, childSessionIds: [], running: [], ended: { total: 0, items: [] } };
-      const messages = await deps.sessionStore.messages({ sessionID: deps.sessionId });
-      const parentEvents = await eventStore.getEvents(deps.sessionId);
-      const ids = collectSubagentChildSessionIds(parentSession, messages, parentEvents);
-      const children = await Promise.all(
-        ids.map(async (id) => {
-          const sessionId = id as SessionId;
-          const session = await deps.sessionStore.getSession(sessionId);
-          if (
-            !session ||
-            session.parentID !== deps.sessionId ||
-            session.taskType !== "subagent_child"
-          )
-            return null;
-          const [messages, events] = await Promise.all([
-            deps.sessionStore.messages({ sessionID: sessionId }),
-            eventStore.getEvents(sessionId),
-          ]);
-          return {
-            session,
-            messages,
-            projection: events.length ? new EventReducer().reduce(events) : undefined,
-          };
-        }),
-      );
-      const valid = children.filter((child) => child !== null);
-      const projection = projectSessionSubagents({
+      const { projection, childSessionIds } = await readSubagentTree({
+        rootSession: parentSession,
         revision: await eventStore.getLatestSequenceNumber(deps.sessionId),
-        parentSession,
-        messages,
-        parentEvents,
-        parentProjection: await deps.runtime.getProjection(),
-        childSessionsById: new Map(valid.map((child) => [child.session.id, child.session])),
-        childMessagesById: new Map(valid.map((child) => [child.session.id, child.messages])),
-        childProjectionsById: new Map(
-          valid.flatMap((child) =>
-            child.projection ? [[child.session.id, child.projection] as const] : [],
-          ),
-        ),
+        store: deps.sessionStore,
+        readEvents: (id) => eventStore.getEvents(id),
+        readProjection: async (id) => {
+          if (id === deps.sessionId) return deps.runtime.getProjection();
+          const events = await eventStore.getEvents(id);
+          return events.length ? new EventReducer().reduce(events) : undefined;
+        },
       });
       const ended = paginateEndedSubagents(projection.ended, {
         cursor: input.endedCursor,
@@ -83,7 +54,7 @@ export function createSubagentObservation(deps: ObservationDeps) {
       });
       return {
         revision: projection.revision,
-        childSessionIds: valid.map((child) => child.session.id),
+        childSessionIds,
         running: projection.running,
         ended: { total: projection.ended.length, ...ended },
       };
@@ -92,7 +63,19 @@ export function createSubagentObservation(deps: ObservationDeps) {
       const eventStore = deps.runtime.getSessionEventStore();
       const sessionId = childSessionId as SessionId;
       const child = await deps.sessionStore.getSession(sessionId);
-      if (!child || child.parentID !== deps.sessionId || child.taskType !== "subagent_child") {
+      if (!child || child.taskType !== "subagent_child") {
+        throw new Error("Subagent does not belong to the current session.");
+      }
+      // 详情访问沿持久父链校验；不能因支持孙代理而放开任意 session ID。
+      const visited = new Set<string>([child.id]);
+      let parentId = child.parentID;
+      while (parentId && parentId !== deps.sessionId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = await deps.sessionStore.getSession(parentId);
+        if (!parent || parent.projectID !== child.projectID) break;
+        parentId = parent.parentID;
+      }
+      if (parentId !== deps.sessionId) {
         throw new Error("Subagent does not belong to the current session.");
       }
       // Read persisted history first, then the event tail. For messages with a

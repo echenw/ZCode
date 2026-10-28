@@ -119,6 +119,8 @@ export type {
   TopicResourcePort,
   BackgroundExecutionSnapshot,
   BackgroundTaskCancelResult,
+  BackgroundTaskCancelOptions,
+  BackgroundTaskCancelOutcome,
   BackgroundTaskInfo,
   BackgroundTaskInfoStatus,
   CompactBoundaryPayload,
