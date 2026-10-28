@@ -1,0 +1,1231 @@
+{
+  "formatVersion": 1,
+  "recordedAt": "2026-10-27T05:47:59.844033+08:00",
+  "verdict": "PARTIAL",
+  "scope": "Local automatic and integration verification. This does not close the complete product acceptance.",
+  "canonicalLedger": "apps/zcode-cli/docs/design/v2/tool/07-subagent-v2-acceptance.md",
+  "plan": "../计划.md",
+  "environment": {
+    "os": "macOS",
+    "osVersion": "27.0.1",
+    "architecture": "arm64",
+    "node": "24.14.0",
+    "pnpm": "10.33.2",
+    "cliTaskConcurrency": 2,
+    "vitestMaxWorkers": 2
+  },
+  "checkout": {
+    "workspace": "/Users/aizou/Desktop/工作台/zcode multi agent v2/zcode-v2-main",
+    "branch": "feat/multi-agent-v2-main",
+    "head": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+    "uncommitted": true,
+    "protectedCleanCheckouts": [
+      {
+        "path": "/Users/aizou/Desktop/工作台/zcode multi agent v2/zcode",
+        "head": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+        "clean": true
+      },
+      {
+        "path": "/Users/aizou/Desktop/工作台/zcode multi agent v2/codex",
+        "head": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+        "clean": true
+      },
+      {
+        "path": "/Users/aizou/Desktop/工作台/zcode multi agent v2/codex-v2-plaintext",
+        "head": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+        "clean": true
+      }
+    ],
+    "trackedDiff": {
+      "files": 89,
+      "insertions": 3208,
+      "deletions": 737
+    },
+    "untrackedFiles": 85
+  },
+  "sourceIdentity": {
+    "scope": "Modified and untracked source, tests and configuration; Markdown and historical artifacts excluded",
+    "sha256": "776eb6540c3c1a9163fd6237191dcaa7d6f45406ad7a43710a3c407aa459804b",
+    "fileCount": 147,
+    "files": [
+      {
+        "path": ".oxlintrc.json",
+        "sha256": "587ae70e369fba8efd34567b954fc34864ab295c27c9fb3f2a190df13c19c174"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/package.json",
+        "sha256": "d538efbe7540052a47922b20eec0a4e9e3b8812d68b40595f6247b4ff61f1717"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/config/config-merger.ts",
+        "sha256": "ba7d1c2a2e69d4819e572e1baf2dee28b4addb8b821cbd9e8a7beb1db3d255ea"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/config/index.ts",
+        "sha256": "a1d97952295ccd02a83e295ba972fcec1cd8a02c7ca05bbd186f4c4fd1ff0c98"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/config/schema.ts",
+        "sha256": "bfb190cb76079746767b10f8a19d4d5add430c09f2db6a21aeac8803cf0e4450"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/model/failure-inspection.ts",
+        "sha256": "f4464418114a9ff4e57ecb5826b7cce6bf6b61a7a90ea33eab5d4e40d2581ab1"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/contract.example.ts",
+        "sha256": "cb1a74e35cc72f1591978a0897cc75af00425bdbaac81e8d2a6eacd9fc354a09"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/contract.test.ts",
+        "sha256": "f6d16d2336c346c808c9719c74a0ed23718e79261fe31b0e041dbb62bf104399"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/contract.ts",
+        "sha256": "03d987dfae6c8bd6c4615c2a4f2679e9d9311aa15cb626ad2d7fd4deed313705"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/http.ts",
+        "sha256": "1689fcfe2ee52120b5f0019d09012c7ac45a7887ab5a19c5aebf3003d2a2bdee"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/identity.ts",
+        "sha256": "f892e31f04d9537eb22b1d370fa7e90ca58720fa0d2f9bc325b6b6a398bf1b9e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/index.ts",
+        "sha256": "63f1c695d01cf3aeb4cb270333cfee9a510facc1ba52e61c5dc9ec3504c8ef42"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/module.ts",
+        "sha256": "bf2209ee5c321040fe7c3004aea6fe7d15657d50b30af41d2d9f64950a81e52e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/src/multi-agent-board/sse.ts",
+        "sha256": "d4e9e32964cbb6b4cfd8dd136db8c3fb69639b494d6758375ccf91885f32fdb1"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/config.test.ts",
+        "sha256": "ac6b86540c2ab30735b8cf74e291efa3f61ac50eb5980f9acee8947ed58edf52"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/failure-classifier.test.ts",
+        "sha256": "b8faa2f05906a6294b31ab6d93b4580542ec555085df46e5af4a4d75cb1bbe64"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/fixtures/message-board-sqlite-process.ts",
+        "sha256": "81ddd27cdaa22baaa32d28e69e21d8544a2f2b2268ec10b0c20173f06b61ddb7"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/fixtures/multi-agent-v2-sqlite-process.ts",
+        "sha256": "19e394700e9af2ad67d0491f528cfcc47e2ef14a4c03a8d38483292c3d997666"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/message-board-sqlite-process.test.ts",
+        "sha256": "878467784a1314d353669141121eb768280f301c0dcc7c0b50703df03ff93a75"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/multi-agent-board-remote.test.ts",
+        "sha256": "f8147531eac5a7ece43a19e60c464ce7d5731f55c2ac0d8e7fe9aa7c8c2aae35"
+      },
+      {
+        "path": "apps/zcode-cli/packages/adapters/tests/multi-agent-v2-sqlite-process.test.ts",
+        "sha256": "2fff49d6f4eb0d85305885b58272d6b57bdc2eddd47c71261e61162cb82facbe"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/create-app.ts",
+        "sha256": "feaa13a524b061a1b94f9df38cb034d333114d48b70844a8d3203de502652640"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/multi-agent-observation/contract.example.ts",
+        "sha256": "58d69c429b11165548a98ec8426e66b785805680c686bbf7abb11a4046f6d334"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/multi-agent-observation/contract.test.ts",
+        "sha256": "f03c27b394e2e02a12891751627c4bbd9a815af2011023260409503cbf6788fb"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/multi-agent-observation/contract.ts",
+        "sha256": "a34f53e7361810308f18f3db0c19a3f863cd5b5537ec7976f849f5ff641b399b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/multi-agent-observation/index.ts",
+        "sha256": "12a5a288ab4524491ae1c5159b15e84a955e079e933ccb999320a2c0b04c3c2a"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/multi-agent-observation/module.ts",
+        "sha256": "572929a5bc76affe406a2cbf8c57b51df9dbb7152857ee4e7696bf17c5fdb9a8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/runtime-config.ts",
+        "sha256": "e77600f3318f9011f9d50136584402e28b82187c4f39e21e54040f46fa2dec66"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts",
+        "sha256": "a1bae6e46aa74322a7745c4f705da0d89c9f139724b8eec20f5ef794d815e785"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/subagent-observation.ts",
+        "sha256": "DELETED"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/app/types.ts",
+        "sha256": "1d36eb4f86add27951566b9a4e603b0bf40b02d27507b08f0105abf7df35e619"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/interaction-background.ts",
+        "sha256": "a65dfd18f8ad89acf8059eee0711358ad3b14dfb85f1a801486a35c47d1cc72f"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts",
+        "sha256": "23c5dd2185d0c7fcc0979b7ae508d8675fb4cf2dbcbe968a02a531f107e782a4"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts",
+        "sha256": "d256dd19e28c0df1867951baf88396fe8778d11e92b051166cd5d5b5df83c5a3"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol/subagent-session-query.ts",
+        "sha256": "536a42431aa1f0170ce4ca3812ec4dd651dc321d1a26069933e8267f3484127a"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/deferred-call-stream-recovery-projection.test.ts",
+        "sha256": "85f44720b98f1917e70157b0086f2c1cff9293051dd6c8515242dc723dd57de1"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/multi-agent-board-host.test.ts",
+        "sha256": "deb0664cf404612dceab57419f3b3c766688b87f0d75b6e47edf24c0b40b4c3f"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/multi-agent-v2-reading-fixture.test.ts",
+        "sha256": "d654a8e1c20f36ab6d0128fbe4bb5720f82fc46e17fd621b46cff797739946da"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/multi-agent-v2-scoped-stop.test.ts",
+        "sha256": "cc1c26cbef6d032de0deabad4f4459281255cbac38f5f54d9bf5575e8450c7cd"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/runtime-config.test.ts",
+        "sha256": "7ab33dbab7e054576f44e188818d0f944eade103713a165528ade56efbe34401"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/subagent-session-query.test.ts",
+        "sha256": "87be3a3e0ac7b37edf09113de168258bdac94773c4a7843d6b0f43b005327e08"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/tool-history-order.test.ts",
+        "sha256": "9e2338e8b11cfa201ae09fda4af7b777de7893e6ac7e84466e27f2cac97197b8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/v4-gateway.test.ts",
+        "sha256": "6c59d26cc624ecd85e185bc62c05b411055f25d3c8a202a422bd46ee8b26256c"
+      },
+      {
+        "path": "apps/zcode-cli/packages/bootstrap/tests/v4-native-interaction-background.test.ts",
+        "sha256": "195d16dbd18bd34b4ed03b3369d2f4f5da51e7cf3e9bde6af2b1086fe663da0c"
+      },
+      {
+        "path": "apps/zcode-cli/packages/cli/tests/tui-subagent-observation.test.ts",
+        "sha256": "3ba556d60e59be4efeb1b216f2375a9d54dff6cb0451dba0deb0721198abea68"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/config/index.ts",
+        "sha256": "a8f35c32c29a9da4529526cde69cf4f08eee56944f6ef74fa580d3b9f5926dc8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/index.ts",
+        "sha256": "4a00d974c106c73b799a9f823eff5acad2fc448f42475de1ff13c16542ea59f7"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts",
+        "sha256": "6de3e95069b08402dd5f0b989faa086612bbc6fe1a08c653971ed665a31c6664"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/interfaces/subagent.port.ts",
+        "sha256": "4a4df15c5459c13848d999aca47127208c8d3e9433c038380060c15c31fc04c8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent-board/index.ts",
+        "sha256": "a825b696bff930300904cb6c44e5519b085aed76e7549c45adeed96e5c6b2027"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent-board/schemas.ts",
+        "sha256": "bf4103941203735af3eb5c401863cfc14a4d9e41f335a81d8f10c979c191e6ea"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/contract.example.ts",
+        "sha256": "e70607b97a912f43a4fb617a885e06626a06a382a80a8313e7fff4c00fcb1767"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/contract.test.ts",
+        "sha256": "4a40973c634676be14edf3efcecc1a39ca95a6bffe52c379b21729326b95bfdb"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/contract.ts",
+        "sha256": "3e34e5d999dd4c3d40be4fd3cd9678b6dde6a1de9d58cc9aee4f7bb1015bb327"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/identity.ts",
+        "sha256": "6e9018c3df35b9679fbc6527f08e60f1936008949cc3fe45cf6dafb96f075602"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/index.ts",
+        "sha256": "cd0386f1041a5ee3d2f8d6c934e0010b37c95cf49a5b42d612698c0d76241cd8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/multi-agent/module.ts",
+        "sha256": "c6db0408195a6e15a164c8b5de2f95987e8bc52dee26868e01f32bc4b9ccf9b2"
+      },
+      {
+        "path": "apps/zcode-cli/packages/contracts/src/tools/index.ts",
+        "sha256": "cc6d69fce2bbc316695d3c03fb7a4c3428bc772046c9dfc2d727c2bc388cabcf"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/agent/message-history.ts",
+        "sha256": "0837d8343fba9ae0e2a8ad51826c7e471a9a03fbbfbe99fb9c3ff92e3ddb8778"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/context/builder.ts",
+        "sha256": "b704eafcb6d7f366868f5c8e47aa27e995eb860830590a56bdf228735310f825"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/context/sections/identity.ts",
+        "sha256": "73dade6f940d22ae7fe81bee2115f4172b58524b2be5d4755534a8baab69c35b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/context/types.ts",
+        "sha256": "a0b634079c4ded6b06d9ac7cca2f6e3fee82ef29d804a0bc7a0983e9660b1e83"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/contract.example.ts",
+        "sha256": "96bcfead00eb218c941f7559aebf4e84a48773635f9231fee55f1da3fec499bb"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/contract.test.ts",
+        "sha256": "b09acfbe1c2628a0049f733e80a7191ca5d9495395bb4cfb56ff8e76f760fe6e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/contract.ts",
+        "sha256": "9ded67b436d48689950d544b4ac62aa24c6d92c99feeccab55b2c21f7e153cc9"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/handler.ts",
+        "sha256": "d8854bed529849ed4612db8fc8bfb96a04d5aa6e71a93e14763a4a758d22674a"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/index.ts",
+        "sha256": "c900046b4e74c0f7b7a6286db408531b77a50bee0196cfd5de4081e74df9e344"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/module.ts",
+        "sha256": "1619ccdfde0fb9f700cc0d149a2d236aca517a7ff453d30666a58aa013b7b1b3"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/queries.ts",
+        "sha256": "7d3cdce8a2fd639b97d07652e84a746c407c2961b611f5d4cd38a9e093565524"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/remote-lifecycle.ts",
+        "sha256": "cf3c3c09360f00607df4a4762125a196e2443797905ad3fece25a2870981464b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/remote.ts",
+        "sha256": "b30727e7093f609b18f15ec75a30c92f339157588f4ab35dcb243fa5965129f3"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/service.ts",
+        "sha256": "b40466ae895fbee836e4abe7d3645eac83cd6cb8cb5ec57bf0e08556aca25c04"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent-board/storage.ts",
+        "sha256": "d605135699e58be7d2e3fd70568f52da31694516f37e94e3368c2ecbb3179b68"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/budget.ts",
+        "sha256": "fc5008100491bfac3bf93ab37485c19c173bdd8a449ef3cc7f7ae47264c2cb0e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/contract.example.ts",
+        "sha256": "d396e1dcc633a877a649be6cec0072a83fb69c190eb83c1ee4a0f75b824bc4c5"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/contract.test.ts",
+        "sha256": "02a63ef7fc04cb4d0263d526a37edd2f7f2907443c24d8e27a23c1c4ac94d0c6"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/contract.ts",
+        "sha256": "10ea632aa2a20aff1cf6d64069bde15783e23e26fe3c2e892bdb0b7f8b7af964"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/controller.ts",
+        "sha256": "f5819ee9100c7794490cedd5f01bb82c820b7ec023d5b450d3f9eff3becaae56"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/handler.ts",
+        "sha256": "a436d4c839c253e10c3f23acf729c3995817c40c968602311cd7ccb687e41002"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/index.ts",
+        "sha256": "8815c47ccd05c67442bb52a3f3d6e89611999293b8fb24f1bf50c02412e7032e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/module.ts",
+        "sha256": "84f6859078c1bef7a895711307b033fcfc470f179dc7d36ad9b8323888b8f264"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/multi-agent/persistence.ts",
+        "sha256": "f3f713bac34847111fc81df02794403899b685c9b75e989bbeab649e4ed06a64"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime-task/registry.ts",
+        "sha256": "c0963dafce3d0f9cba7adb1a6c6230afd0a49d3a7c83a55a4afe85ddf1dfaf58"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts",
+        "sha256": "64f1aac1bd8c576e8cc2a3ec90aa0850c244831c082edbb25aefe75cfc8cf38d"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/deps.ts",
+        "sha256": "9b5b5b50dc8c4911a0f2508a46fa57cbe136075b1cc64fb295b1c0f07891156d"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/helpers/compact-selection.ts",
+        "sha256": "09f7f239acc08f669185d874c05898e916bd5f3e3c22079e3416c8392abafd7d"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/helpers/compact.ts",
+        "sha256": "3ee882af36f3b4946e249ebce94c9400885c1da0bdbd671cb47c1266dcfc1da8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts",
+        "sha256": "2363e5effb04dfccab0de052aa996e3103bd2be7c7a5102af8ff6b038c5e9f0b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/internal-turn-methods.ts",
+        "sha256": "4d246da9a44d2e8bc8a0e6b574bfbe2f03995022f73750481fb9e98325449629"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/internal.ts",
+        "sha256": "98d9e375da4c69860e38fce4a9142ced28ce09d9e876ee93f7f78f2ed512f1c9"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/background.ts",
+        "sha256": "4c56c68d60c95b31197943207af6da53abe12d0b79c93fe1af3cfe235dd1df1b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/context-refresh.ts",
+        "sha256": "53006b657b81b9fa15ecba8fcc22870b2a86a5a32cfa3225014c5efb12f0de61"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/context.ts",
+        "sha256": "3f747397385c0ad46593f107ca124b553008c66bb56f4cfedf137d8bf8b1a039"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/embedded-search-branch.ts",
+        "sha256": "45a734db1c03a3a9399aa129831491c9a310ede133580ac2551b51ff5e500205"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/model.ts",
+        "sha256": "20779b7324ce9e6545d2e82c94308ac6f57bf05ebb3dba5ee8761c5fefa8027e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/runtime-model.ts",
+        "sha256": "482f5c7000e23be71a8bf047d5acda44e3e67bd45bfb64442f642f7704885f6b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/steering.ts",
+        "sha256": "cda1ea6056b204b45b530777c4b61b602901a2418fc1a14f00a9a8be38a6ddf3"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/streaming-recovery.ts",
+        "sha256": "33d92da72051217a130b19a1493e86bb9140056d0b17d716a57c472bf50e3a64"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/streaming-tool-coordinator.ts",
+        "sha256": "4932a222f91efe7475e7b3a0e85f082fd114ff2b09b37d1a23ba5cf00c7a49f6"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts",
+        "sha256": "f64b3394327bd78165cc752ebf6b70a2d4dbcad6bc9c8482e8d458deb2e26d4d"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts",
+        "sha256": "fbbe3ebbd3857f63b79e7e10a6f1f594d4a18051f9dba7e32d86787778b0fd17"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts",
+        "sha256": "d88de607fe50a08e21a75dc6efe40a4f4ecab6695081a9c5232020977cc2b9eb"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts",
+        "sha256": "582b84875365731009681c65400266d2aeb5d842a6efa62f9322a32edc7cf8a8"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts",
+        "sha256": "3e3b2ed8d3cee655c3402ffb0846116df4617ad247388c0590e8a9e8f35c3763"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/runtime/types.ts",
+        "sha256": "2697d3f98d21a29077138e3f63c5f4236201fa5306fc4eb36325675b2f0449fd"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/subagent/context-builder.ts",
+        "sha256": "c0773917783e8b80177a5a45864f755aaacda7387702e7e375424fa171dc9bfb"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/subagent/message-steering.ts",
+        "sha256": "4d11ecd8b1d3dae85959d5d8de55e448532bbf70405423fa99b1859723946180"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/subagent/runner.ts",
+        "sha256": "8b1a38bf9f6f98192168bf2626134bd39f4490d01312674c47aced87821cc93b"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/src/tool/handlers/index.ts",
+        "sha256": "685ee9ccb841d6a2f785c61845b1fe2df7de1265504ad243508b16f2f79a7903"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/context-builder.test.ts",
+        "sha256": "2c166d215a0887c211d482aef5553b6b694fd725c1d95a7e4833022fd821baa5"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/io-boundary.test.ts",
+        "sha256": "602952301ecf6a1ec4526cdf3e6014bd31848230a85d2a66907a8a24b55000da"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/multi-agent-message-board.test.ts",
+        "sha256": "985321e1a5b8dc72492af979175f3722ec7d15a1d228922f325bd56b73b2d8d5"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/multi-agent-v2-persistence.test.ts",
+        "sha256": "55d54ca1b1eed77567f20a88b7ce34cdcb13158244993084f58ecddfef52d826"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/multi-agent-v2-runtime.test.ts",
+        "sha256": "2a191556731c308a8c6b6868d331b8085105b22f973714a5cb48351477096422"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/multi-agent-v2.test.ts",
+        "sha256": "01368cbfc7eeedc3349ebe019a2fc4c65972dea6f61e4c58f4371bd6c26aa854"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/node-repl-browser-injection.test.ts",
+        "sha256": "2bbd47323bb6d345b485767694787282e8f8bc791ab3dc89879b7e77c9f1664e"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/runtime-model-admission.test.ts",
+        "sha256": "ece10fea2b64ea240a3ed93c7c6e34fe109a9da19b56b13ed15f23819e7433c7"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/runtime-stream-recovery.test.ts",
+        "sha256": "c4452e0cb04ea76f9d0b245f860ee102839cedfcb72f263a0d662fae5a004956"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/runtime-streaming-tool-part-identity.test.ts",
+        "sha256": "2e4b8764882fec4e7211c62e95eb39705cada0a2c64a2f15d9ab3a9cc33ee537"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/runtime-tool-loop.test.ts",
+        "sha256": "e19911eac94a957b44728a2c958cb6be86313a819df780bd134512abf752b4f7"
+      },
+      {
+        "path": "apps/zcode-cli/packages/core/tests/subagent-prompt-assembly.test.ts",
+        "sha256": "a3c3636f41653b5d8dce16077d630ce7047950195be99937972d8fd257aa0f79"
+      },
+      {
+        "path": "apps/zcode-cli/packages/dynamic-workflow-runtime/tests/child-source-bundled.test.ts",
+        "sha256": "12aa80e022ce57231ceaf9d603f963c6b52414244663034c00942383ba731eb5"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/app-sidebar-subagents.tsx",
+        "sha256": "DELETED"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/app-sidebar.tsx",
+        "sha256": "a682e061536fd896cb5b5395ccc1be1a36fd4381d101f11b0e70c3a15fe21498"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/app-subagent-view.tsx",
+        "sha256": "DELETED"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/app-view.tsx",
+        "sha256": "4848afd34b10a0f7754f287dbd9b6183e54928717a5c0bd5b3ce4366eea1f526"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/contract.example.ts",
+        "sha256": "f08c3d9c74e9d88c95b466659e031a27a4141cb5fa9edaa1c263c0bcbbf1c9f6"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/contract.test.ts",
+        "sha256": "be7bbbbabe9b6ff217851fc1dac93a7134facf2abd4b4481fd350ab31e8cd9aa"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/contract.ts",
+        "sha256": "331d69eb7338f74642a8453f236132f964580e6c2c913faf057f2ffc26d8d21d"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/detail.tsx",
+        "sha256": "c2d362ff4587eddb89c3c773069c382e1d638721454a5b024bf9a692bd438aed"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/index.ts",
+        "sha256": "738ebdb7cdd9088c0a824f55694c4e94a11ac380bae0455031fcb8522a8deb8f"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/module.ts",
+        "sha256": "94b935b7d76605d7079e12c14b4209c4f5e779bee40eb034b2083a1e7917357c"
+      },
+      {
+        "path": "apps/zcode-cli/packages/tui/src/multi-agent-ui/sidebar.tsx",
+        "sha256": "d8d1d7105a8e9198a2ee379654123926c509233abf29e27c7f0c2de598e3ded2"
+      },
+      {
+        "path": "architecture-policy.yaml",
+        "sha256": "9245472b9fac498fdcb08751e9b2c62bfe7a98d6c72bcabdbbadf0ce1ab2a09c"
+      },
+      {
+        "path": "packages/desktop/test/e2e/conversation-session/conversation-session-subagent-v2-native.test.ts",
+        "sha256": "57fa85135a7f45940da5db1bc1249126ab0f063e7d17f86386ba21a1b5e2474d"
+      },
+      {
+        "path": "packages/desktop/test/e2e/fixtures/cases/conversation-session/conversation-session-subagent-v2-native.json",
+        "sha256": "63fe7890698245228f08b1607fb60e96f702722219293a8aa87d1d696835bc89"
+      },
+      {
+        "path": "packages/desktop/test/e2e/fixtures/upstream/conversation-session/conversation-session-subagent-v2-native.json",
+        "sha256": "caa9625e4d221d30f82ea91562b8b2d727a99d08ef95deac7c5e50d75d99408c"
+      },
+      {
+        "path": "packages/shared/src/zcode-protocol-v4/command.ts",
+        "sha256": "3b74357e7bfb7e05a84e592ca9daf1867813aac2f17124489cea16046112d1b7"
+      },
+      {
+        "path": "packages/shared/src/zcode-protocol-v4/rows.ts",
+        "sha256": "2e23c1d51bb1886091311d52d5b40d99136ed4a111b80326b459ff6a6931186a"
+      },
+      {
+        "path": "packages/shared/src/zcode-protocol-v4/snapshot.ts",
+        "sha256": "b7836e5e272083b952f7dd6c3ee1fe08518fcf65d3f386ca1e32eeb290802fa8"
+      },
+      {
+        "path": "packages/shared/src/zcode-protocol/index.ts",
+        "sha256": "c8e62aceb4aed1b6855ae444bdd945e5faccc36b2e752c1fa3eacfdafb80615c"
+      },
+      {
+        "path": "packages/shared/test/zcodeProtocol.test.ts",
+        "sha256": "b2e055ad0ec1d390aa2b759f0cd78943435410004ad7f49372e49baafae87a66"
+      },
+      {
+        "path": "packages/shared/test/zcodeProtocolV4Command.test.ts",
+        "sha256": "c4f1a9aa8496177379dc8113f77e150531bf0277b6238e7c8ea5c019323c64d9"
+      },
+      {
+        "path": "packages/ui/src/app-shell/SubagentDirectorySidePane.tsx",
+        "sha256": "90c6d00894a5b1ba8ce8ae5b35dcba7dd7636781fd50f2172a63aa2fe093e70c"
+      },
+      {
+        "path": "packages/ui/src/v4/ConversationStatusPanel.tsx",
+        "sha256": "8aa57ad9c969b311de99e6590bfd4722e7031ea7195d89924627271a52e5ca94"
+      },
+      {
+        "path": "packages/ui/test/subagentDirectorySidePane.test.ts",
+        "sha256": "72320d5e562c7e61247fc368bee875c5f078887c2c4a3bf3fd75a15d6dd9b829"
+      },
+      {
+        "path": "packages/ui/test/v4ConversationStatusPanel.test.ts",
+        "sha256": "e500f0e395a39758a3561911399e43a5d0f494c697529130826c7597bbfc6827"
+      }
+    ]
+  },
+  "fullCliRegression": {
+    "command": "CI=1 VITEST_MAX_WORKERS=2 pnpm --dir apps/zcode-cli test --force --concurrency=2 --continue=dependencies-successful",
+    "successfulTasks": 42,
+    "totalTasks": 42,
+    "cachedTasks": 0,
+    "duration": "5m21.379s",
+    "packages": {
+      "@zcode/ios-simulator-plugin": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/android-emulator-plugin": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "debug": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/plugin-creator-plugin": {
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "runner": "node:test",
+        "total": 8
+      },
+      "@zcode/office-runtime": {
+        "passed": 69,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/dynamic-workflow-runtime": {
+        "passed": 98,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/dynamic-workflow": {
+        "passed": 1983,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/telemetry": {
+        "passed": 42,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/contracts": {
+        "passed": 335,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/i18n": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/adapters": {
+        "passed": 2304,
+        "failed": 0,
+        "skipped": 4,
+        "runner": "vitest"
+      },
+      "@zcode/tui": {
+        "passed": 217,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "runner": "node:test",
+        "total": 217
+      },
+      "@zcode/core": {
+        "passed": 4313,
+        "failed": 0,
+        "skipped": 21,
+        "runner": "vitest"
+      },
+      "@zcode/node-repl-host": {
+        "passed": 51,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/cli": {
+        "passed": 518,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "runner": "node:test",
+        "total": 518
+      },
+      "@zcode/browser-use-plugin": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "runner": "vitest"
+      },
+      "@zcode/bootstrap": {
+        "passed": 3084,
+        "failed": 0,
+        "skipped": 15,
+        "runner": "vitest"
+      }
+    },
+    "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-acceptance-verified.log",
+    "sha256": "8bc83e125f8618fe352ad40d5ad843bc62049972193db5d780394d589d4dde33",
+    "exitCode": 0
+  },
+  "rootProtocolAndUiTests": {
+    "passed": 234,
+    "failed": 0,
+    "skipped": 0,
+    "testFiles": 10,
+    "files": [
+      "packages/shared/test/zcodeProtocol.test.ts",
+      "packages/shared/test/zcodeProtocolV4Command.test.ts",
+      "packages/shared/test/zcodeProtocolV4CommandQuery.test.ts",
+      "packages/shared/test/zcodeProtocolV4DisplayTolerance.test.ts",
+      "packages/shared/test/zcodeProtocolV4Usage.test.ts",
+      "packages/shared/test/zcodeProtocolV4Wire.test.ts",
+      "packages/ui/test/subagentDirectorySidePane.test.ts",
+      "packages/ui/test/subagentSidePane.test.ts",
+      "packages/ui/test/useSessionSubagents.test.ts",
+      "packages/ui/test/v4ConversationStatusPanel.test.ts"
+    ],
+    "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-root-tests.log",
+    "sha256": "e92f249fd8639e6a7bc9fd78bea8c51560aedfab896e79d3158b4709c2c4f646",
+    "exitCode": 0
+  },
+  "targetedFinalScopeResults": {
+    "passed": 39,
+    "failed": 0,
+    "skipped": 0,
+    "testFiles": 1,
+    "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/scope-result-fixed.log",
+    "sha256": "7e5b0aef5a9e4f4e02c19952712112b527f44c133874c0a00b3d7fb7a8e35503",
+    "exitCode": 0,
+    "subsetOfFullCliRegression": true
+  },
+  "productionAppIntegration": {
+    "scopedStop": {
+      "passed": 2,
+      "test": "apps/zcode-cli/packages/bootstrap/tests/multi-agent-v2-scoped-stop.test.ts"
+    },
+    "isolatedRead": {
+      "passed": 1,
+      "test": "apps/zcode-cli/packages/bootstrap/tests/multi-agent-v2-reading-fixture.test.ts"
+    },
+    "stateProjection": {
+      "passed": 20,
+      "test": "apps/zcode-cli/packages/bootstrap/tests/subagent-session-query.test.ts"
+    },
+    "includedInFullCliRegression": true,
+    "realComponents": [
+      "App",
+      "V4",
+      "Runtime",
+      "Runner",
+      "Registry",
+      "SQLite",
+      "Read filesystem adapter"
+    ],
+    "model": "Local fixture; no autonomous or external model validation"
+  },
+  "checks": {
+    "rootTypecheck": {
+      "command": "pnpm typecheck",
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-root-typecheck.log",
+      "sha256": "ea5e7839d03c004eee8d3f2c7f924024ef0676d50016056453c1d9740370c99b",
+      "exitCode": 0
+    },
+    "cliTypecheck": {
+      "command": "pnpm --dir apps/zcode-cli typecheck --concurrency=2",
+      "successfulTasks": 32,
+      "cachedTasks": 24,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-cli-typecheck.log",
+      "sha256": "d97ad09d8862566b2cb92ffdd74a3808ff353b1a4872f810c446fc84c85fe5c0",
+      "exitCode": 0
+    },
+    "rootLint": {
+      "command": "pnpm lint",
+      "warnings": 96,
+      "errors": 0,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/scope-root-lint.log",
+      "sha256": "e9b2dbe7b10572bfd8d6865d9eb12720f6436eaea45462e73de7dedb9507a302",
+      "exitCode": 0
+    },
+    "cliLint": {
+      "command": "pnpm --dir apps/zcode-cli lint",
+      "warnings": 70,
+      "errors": 0,
+      "pristineUpstreamLineCountDiagnostics": 12,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/scope-cli-lint.log",
+      "sha256": "3abc51167ff9b3b3adba3dde0bb500b1dbcbe408f3b2397c55e9878b8f453495",
+      "exitCode": 0
+    },
+    "architecture": {
+      "command": "pnpm architecture:check --changed",
+      "violations": 0,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/scope-architecture.log",
+      "sha256": "7243d5d83fe4aef9a7c16435a14fb954a3f1a48d50312e0da81ce0b19f998af9",
+      "exitCode": 0
+    },
+    "architectureTests": {
+      "command": "pnpm test:architecture",
+      "passed": 36,
+      "failed": 0,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-architecture-tests.log",
+      "sha256": "f815df30fa63c933c46f3b4fa20fa0989e383247428a068718d4ea1fe0c53d6f",
+      "exitCode": 0
+    },
+    "schema": {
+      "command": "pnpm db:schema:check",
+      "passed": 8,
+      "failed": 0,
+      "sqliteBaselinesCompatible": 2,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-schema.log",
+      "sha256": "451a2da0ea034fb6ade368aa9ab2bc5d819ec4d45446ce0672857d5e7cbf8ad9",
+      "exitCode": 0
+    },
+    "desktopBuild": {
+      "command": "ZCODE_ENV=test pnpm --filter @zcode/desktop build:no-runtime-assets",
+      "nativeE2EProven": false,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-desktop-build.log",
+      "sha256": "531ca43e35ddd82d41e88d6f29192cd69be3b8a1f43a50ec6c53ff2881d31765",
+      "exitCode": 0
+    },
+    "workspaceFreshness": {
+      "command": "node scripts/check-workspace-freshness.mjs",
+      "aheadOriginMain": 0,
+      "behindOriginMain": 0,
+      "log": "/tmp/zcode-v2-acceptance-20261027-2fHdgg/local-workspace-freshness.log",
+      "sha256": "b2daaad6451247488ddd841e781767ff0db4e855cad2a188e2928e1bf1d28cd5",
+      "exitCode": 0
+    }
+  },
+  "blocked": [
+    {
+      "id": "native-desktop",
+      "status": "BLOCKED",
+      "evidence": [
+        "native-e2e-resumed.log",
+        "native-diagnostic-esm.log",
+        "chromedriver-current.log"
+      ],
+      "testCasesPassed": 0,
+      "startupFailures": 1,
+      "outerRunnerExitCode": 0,
+      "summaryProduced": false,
+      "code": "EPERM",
+      "failure": "ChromeDriver-spawned Electron could not read the isolated .e2e-cache app/main/index.js entry. Native scenarios did not start.",
+      "scope": "Do not equate a successful build or outer zero exit with a passed native scenario. Direct shell Electron read probe succeeded; system-permission root cause is unconfirmed."
+    },
+    {
+      "id": "external-models",
+      "status": "BLOCKED",
+      "reason": "User explicitly limited this run to local acceptance; no real external model or cross-provider requests were made.",
+      "affected": [
+        "T11",
+        "T26",
+        "T27",
+        "T30",
+        "S-T05",
+        "S-T06",
+        "S-T11",
+        "S-T12"
+      ]
+    },
+    {
+      "id": "codex-B0",
+      "status": "BLOCKED",
+      "referenceCommit": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "historicalProbeLog": "/tmp/zcode-v2-plaintext-probe-20261026/fixed-stdio-v2-stderr.log",
+      "currentOwnerSource": "../codex-v2-plaintext/codex-rs/code-mode-protocol/src/host/payload.rs",
+      "failure": "Missing required code_mode_host_duration_ns in code-mode IPC frames. No current end-to-end plaintext success.",
+      "subsequentStages": [
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "plaintextSourcePatchPresent": false
+    },
+    {
+      "id": "real-board-deployment",
+      "status": "NOT_PROVEN",
+      "reason": "Local HTTP adapter and SQLite process tests do not prove a deployed external Board service."
+    }
+  ],
+  "remainingPartialScenarios": [
+    "T10/T25: real side-effect tools with repeated failure/resume in the full application scenario",
+    "T16/T28: native foreground/background tree and Main Stop; blocked before native launch",
+    "T17: public scoped cancellation passed; native scope controls and screen interactions not proven",
+    "T18/T19: SQLite process restoration passed; native Host disconnect/reconnect and cold relaunch not proven",
+    "T22: real MCP/system approval environment matrix not covered",
+    "T30 and S-T rows: autonomous model behavior, multi-provider normalization, prompt/cache usage not proven"
+  ],
+  "historicalRunsRetained": [
+    {
+      "log": "targeted-initial.log",
+      "passed": 61,
+      "failed": 4,
+      "supersededBy": "targeted-fixed.log"
+    },
+    {
+      "log": "local-acceptance-final.log",
+      "status": "INTERRUPTED",
+      "exitFilePresent": false
+    },
+    {
+      "log": "local-acceptance-complete.log",
+      "exitCode": 1,
+      "reason": "Missing actual Main cancellation in scoped-stop batch outcomes",
+      "supersededBy": "local-acceptance-verified.log"
+    }
+  ],
+  "acceptanceMatrixCounts": {
+    "MA": 36,
+    "V2": 30,
+    "T": 30,
+    "S-T": 12,
+    "note": "Overlapping views, not an independent feature or pass denominator"
+  },
+  "protection": {
+    "committed": false,
+    "pushed": false,
+    "resetCleanStashUsed": false,
+    "externalModelRequests": false,
+    "originalUntrackedFilesNotCleaned": true,
+    "stagedFiles": 0
+  },
+  "rawEvidenceDirectory": "/tmp/zcode-v2-acceptance-20261027-2fHdgg",
+  "notes": [
+    "Targeted and full suite totals overlap and must not be added. Skipped tests are not passed.",
+    "Source identity covers modified and untracked source/config/test files; Markdown, historical artifacts and this result JSON are excluded.",
+    "Root protocol/UI, schema, architecture-test and Desktop-build results remain applicable because the last product delta was confined to the CLI scoped-stop implementation and its Core test."
+  ],
+  "followup20261027ChildControls": {
+    "recordedAt": "2026-10-27T10:02:31+08:00",
+    "scope": "User child controls, mailbox boundaries, Main Stop receipt, and graceful root shutdown; not a project-wide acceptance verdict",
+    "historicalTopLevelFields": "The original top-level verdicts and breakpoints describe the earlier run; this followup records the later evidence without rewriting history.",
+    "checkout": {
+      "branch": "feat/multi-agent-v2-main",
+      "head": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+      "committed": false,
+      "pushed": false
+    },
+    "sourceIdentity": {
+      "scope": "Modified/untracked product files under Core, Bootstrap, Contracts, Adapters, Shared, UI and Desktop src; Markdown excluded",
+      "fileCount": 102,
+      "sha256PathNulFileDigest": "6a0a3bab1d53e9f558e9b106fb0ca321b7f8a8ced137e1cc61ffe8cadb96a8bd",
+      "shutdownRuntimeSha256": "0805924fca302d41cf3a7e7e7eb84be3521a94f292de1944e5f6828f2126c27b",
+      "userControlsTestSha256": "58392d820aca69b2f33a70d7322dee97c10e57f899e98e35fd34faff4fc8dc1d"
+    },
+    "fullCliBeforeShutdownFix": {
+      "tasks": 42,
+      "successful": 42,
+      "cached": 0,
+      "exitCode": 0,
+      "core": {
+        "passed": 4316,
+        "skipped": 21
+      },
+      "adapters": {
+        "passed": 2304,
+        "skipped": 4
+      },
+      "bootstrap": {
+        "passed": 3085,
+        "skipped": 15
+      },
+      "tui": {
+        "passed": 217,
+        "skipped": 0
+      },
+      "cli": {
+        "passed": 518,
+        "skipped": 0
+      },
+      "log": "/tmp/zcode-v2-child-controls-20261027/cli-verified.log"
+    },
+    "coreAfterShutdownFix": {
+      "passed": 4317,
+      "skipped": 21,
+      "failed": 0,
+      "exitCode": 0,
+      "log": "/tmp/zcode-v2-child-controls-20261027/core-final-shutdown.log",
+      "laterTestOnlyChanges": "Additional receipt-history and legacy A/B/C combination tests; product source unchanged",
+      "finalTargetedPassed": 6,
+      "targetedLog": "/tmp/zcode-v2-child-controls-20261027/core-a4-final.log"
+    },
+    "otherChecks": {
+      "uiRelatedPassed": 219,
+      "uiHelperSubsequentPassed": 75,
+      "overlap": true,
+      "rootTypecheckExitCode": 0,
+      "cliTypecheckTasks": 32,
+      "cliTypecheckCached": 18,
+      "rootLintErrors": 0,
+      "rootLintWarnings": 96,
+      "cliLintErrors": 0,
+      "cliLintWarnings": 70,
+      "cliPristineUpstreamLineCountDiagnostics": 12,
+      "architectureViolations": 0,
+      "architectureTestsPassed": 36,
+      "schemaTestsPassed": 8,
+      "schemaBaselinesCompatible": 2
+    },
+    "nativeReplay": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "summaryExitCode": 0,
+      "scenarioRequests": 23,
+      "scenarioStatus200": 23,
+      "allReplayRequests": 24,
+      "allReplayStatus200": 24,
+      "externalLlmVerified": false,
+      "runId": "v2-native-06",
+      "summary": "/tmp/zcode-v2-child-controls-20261027/native-artifacts-06/summary.json",
+      "evidence": "/tmp/zcode-v2-child-controls-20261027/native-artifacts-06/v2-native/evidence.json",
+      "log": "/tmp/zcode-v2-child-controls-20261027/native-06.log",
+      "coverage": [
+        "child detail stop and same-identity resume",
+        "Main Stop preserves running descendants",
+        "warm followup",
+        "real process cold restart and same-identity followup with queued mail"
+      ]
+    },
+    "devRuntime": {
+      "newBundleSha256": "454a5bc0ea94f185e09ad3634c290340f6b6f26e497f6f28160506be4a854013",
+      "oldBundleSha256": "641a0e5be8cd8f0fc02539bb8299a9c8f4acb0d2a8b41fec482eb97bad24787a",
+      "backup": ".zcode-runtime/desktop-dev/bundle-backups/zcode-before-child-controls-20261027.cjs",
+      "existingProcessesRestarted": false,
+      "existingProcessesUseOldBundle": true
+    },
+    "remaining": [
+      "Native legacy foreground/background/grandchild combination not separately replayed",
+      "Host disconnect/reconnect not separately verified",
+      "Native scoped-stop selection not verified",
+      "Cross-provider and other external model acceptance blocked",
+      "Codex B0-B3 and deployed Board not proven",
+      "Remaining partial scenarios in canonical ledger"
+    ],
+    "canonicalLedger": "apps/zcode-cli/docs/design/v2/tool/07-subagent-v2-acceptance.md",
+    "rawEvidenceDirectory": "/tmp/zcode-v2-child-controls-20261027"
+  },
+  "followup20261027RendererReconnect": {
+    "recordedAt": "2026-10-27T10:06:18+08:00",
+    "runId": "v2-native-07",
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "summaryExitCode": 0,
+    "scenarioRequests": 23,
+    "scenarioStatus200": 23,
+    "allReplayRequests": 24,
+    "allReplayStatus200": 24,
+    "externalLlmVerified": false,
+    "scope": "Renderer refresh and resubscription while root and three descendants run; identities, generation, visible state, single-start counters, and the full subsequent native stop/resume/cold-restart scenario",
+    "limitations": "Local renderer resubscription is not remote Host disconnect/reconnect; synthetic replay is not real model verification",
+    "specSha256": "9523232618e86e4e26741424457003d39cbb5b03eb4dc3d9b05ac2dbfb8b3951",
+    "desktopE2eTypecheckExitCode": 0,
+    "rootLintErrors": 0,
+    "rootLintWarnings": 96,
+    "summary": "/tmp/zcode-v2-child-controls-20261027/native-artifacts-07/summary.json",
+    "evidence": "/tmp/zcode-v2-child-controls-20261027/native-artifacts-07/v2-native/evidence.json",
+    "log": "/tmp/zcode-v2-child-controls-20261027/native-07.log"
+  },
+  "followup20261027NativeA4": {
+    "recordedAt": "2026-10-27T10:09:12+08:00",
+    "runId": "v2-a4-02",
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "summaryExitCode": 0,
+    "scenarioRequests": 13,
+    "scenarioStatus200": 13,
+    "allReplayRequests": 14,
+    "allReplayStatus200": 14,
+    "externalLlmVerified": false,
+    "scope": "Real desktop Main Stop with legacy foreground A, V2 background B, and A child C; root list/wait/followup original B and model-visible cancellation receipt",
+    "limitations": "Synthetic model replay; not independent remote Host disconnect or native subtree/tree scope selection",
+    "sourceSha256": {
+      "packages/desktop/test/e2e/conversation-session/conversation-session-subagent-v2-a4.test.ts": "daf41a82a3a4aee7a3b1879fec156ed6e7c88e9531e4cbf418ba2b4e57266d37",
+      "packages/desktop/test/e2e/fixtures/upstream/conversation-session/conversation-session-subagent-v2-a4.json": "0f62e9c9a4abc4118eb8e728acaa56ac520d183375cb1a2136634366e9f460d6",
+      "packages/desktop/test/e2e/fixtures/cases/conversation-session/conversation-session-subagent-v2-a4.json": "9c21b1b3d91196534891a880021d0717c8a4cfbdbbb5d1852a014a9852e7cd99"
+    },
+    "fixtureCheckExitCode": 0,
+    "desktopE2eTypecheckExitCode": 0,
+    "rootLintErrors": 0,
+    "rootLintWarnings": 96,
+    "summary": "/tmp/zcode-v2-child-controls-20261027/a4-artifacts-02/summary.json",
+    "evidence": "/tmp/zcode-v2-child-controls-20261027/a4-artifacts-02/v2-a4/evidence.json",
+    "log": "/tmp/zcode-v2-child-controls-20261027/a4-02.log"
+  },
+  "followup20261027CommitClassification": {
+    "recordedAt": "2026-10-27T10:20:39+08:00",
+    "priorBaseline": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+    "sourceRevision": "8f04090d353be3fff2e95d3d57692aeff48878a4",
+    "headBeforeDocumentation": "d2e7c21d7ba5f104b7b1fb30a264e75450c2ad54",
+    "commitsNewestFirst": [
+      {
+        "id": "d2e7c21d7ba5f104b7b1fb30a264e75450c2ad54",
+        "subject": "style: normalize architecture policy formatting"
+      },
+      {
+        "id": "8f04090d353be3fff2e95d3d57692aeff48878a4",
+        "subject": "feat: add desktop multi-agent controls and views"
+      },
+      {
+        "id": "6c167e0a2753b2cebb376be15bb50dd27e48f717",
+        "subject": "feat: add multi-agent v2 runtime and coordination"
+      },
+      {
+        "id": "ad74a30fbaf0e408e31818339bdfd54e7d809ce5",
+        "subject": "fix: bound recovery for interrupted model streams"
+      },
+      {
+        "id": "785d4b018973b9a383bcbab77868a5ba41dc8fd2",
+        "subject": "test: resolve file URLs on unicode workspace paths"
+      }
+    ],
+    "currentWorkspace": "/Users/aizou/Desktop/工作台/zcode-multi-agent-v2/zcode-v2-main",
+    "renamedParentFrom": "zcode multi agent v2",
+    "renamedParentTo": "zcode-multi-agent-v2",
+    "worktreePointersRepaired": true,
+    "pushed": false,
+    "excludedPreserved": [
+      "apps/zcode-cli/packages/adapters/backup/",
+      "packages/desktop/native-startup-probe/"
+    ],
+    "validation": {
+      "pathTestsPassed": 13,
+      "streamSnapshotCorePassed": 187,
+      "streamSnapshotAdaptersPassed": 74,
+      "streamSnapshotBootstrapPassed": 9,
+      "v2SnapshotCorePassed": 123,
+      "v2SnapshotAdaptersPassed": 89,
+      "v2SnapshotBootstrapPassed": 63,
+      "v2SnapshotTuiPassed": 217,
+      "v2SnapshotSharedPassed": 126,
+      "v2SnapshotScopedArchitectureViolations": 0,
+      "rootTypecheckExitCode": 0,
+      "uiRelatedTestsPassed": 84,
+      "rootLintErrors": 0,
+      "rootLintWarnings": 96
+    },
+    "note": "Earlier top-level results remain historical snapshots; native replay was executed before the folder rename and did not use external models."
+  },
+  "followup20261027FullArchitectureCheck": {
+    "recordedAt": "2026-10-27T10:21:57+08:00",
+    "checkedRevision": "eea0d025ca0e65cf90be6c6089c31d400dc2253a",
+    "fullCheck": {
+      "exitCode": 1,
+      "violations": 1,
+      "rule": "missing-module-artifact",
+      "path": "packages/services/src/gen-ui",
+      "detail": "gen-ui-service is missing contract.test.ts"
+    },
+    "changedCheck": {
+      "exitCode": 0,
+      "violations": 0,
+      "base": "origin/main"
+    },
+    "baselineEvidence": {
+      "revision": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+      "missingFileAlreadyAbsent": true,
+      "moduleAlreadyManaged": true,
+      "moduleChangedByTask": false
+    },
+    "note": "E20/E26 architecture checks were scoped to changed files; they do not establish a successful full-repository architecture check."
+  }
+}

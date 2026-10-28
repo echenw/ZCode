@@ -85,6 +85,26 @@ best-effort observability.
 
 ## Write Points
 
+- Multi-agent root token admission and its durable lifetime ledger belong to the runtime Model
+  handle boundary. Every `generateText` call and every consumed `streamText` iterator first waits
+  for graph restoration and checks the shared root budget, including WebSearch, WebFetch, compact,
+  and sidecar calls. Adapter attempt admission composes this check with the existing concurrency
+  governor; a later retry or a ticket granted after the budget was exhausted cannot issue another
+  provider request, and a rejected granted ticket is released.
+- The root ledger consumes provider-reported usage directly from the model result, stream finish,
+  or terminal network status, keyed once per physical request/attempt. A finish/result and its
+  matching completed status cannot double count. Reported usage on failed attempts is committed
+  before retry admission even when no stream finish exists. Unknown usage is not estimated.
+  `ModelComplete` and tool `output.modelUsage` remain presentation facts, and the existing
+  `recordModelUsageFact` writer must not add the same model request to the root ledger again.
+  Resolved main/subagent execution model identity and live child usage projection remain attached
+  to that same accepted usage fact. Independent in-flight requests use the existing actual-usage
+  exhaustion semantics; the budget does not reserve or predict tokens.
+- A child can inherit an already wrapped parent Active Model. The actual outer invocation alone
+  owns admission and usage; inner inherited runtime layers preserve the child's session type,
+  governor and accounting owner. The scope ends at the model/iterator boundary, so a later tool
+  request gets its own usage identity. A usage persistence failure also fences subsequent physical
+  attempts even when adapter telemetry catches the sink rejection.
 - Runtime writes `model_usage` after every successful `ModelComplete` and after model request
   failures when a request reached the runtime boundary.
 - 明确超窗且无有效输出的 finish 在 Adapter 归一为失败；若 provider 已报告 usage，将其保留在

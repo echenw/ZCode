@@ -2,6 +2,26 @@
 
 ## 目标
 
+本页维护当前工作树的 child 详情呈现与用户控制边界；CLI 执行/消息权威规则见
+[Subagent Tool 的适用模式](../apps/zcode-cli/docs/design/v2/tool/07-subagent.md#当前适用模式与复用边界)，
+运行和真实模型/桌面证据统一见[既有验收记录](../apps/zcode-cli/docs/design/v2/tool/07-subagent-v2-acceptance.md)。
+原版已提供代理目录、右侧 child tab、完整只读时间线及 SessionDataLayer 订阅，V2 在其上增强昵称、
+递归详情/数量与用户控制，不建立第二个会话、消息队列或树 Owner。
+原 Root Registry 持有代理关系与状态，SessionStore 持有历史；Renderer 只保留草稿、打开/关闭、激活和布局状态。
+Workflow activity 和正式问答继续沿原 Workflow 链路，本页输入区的普通 V2 提问/回答只是消息，
+不创建 qid、待回答或阻塞问答状态。
+
+### 代理通信与递归详情（2026-10-27）
+
+- 代理来信和结果沿原邮箱投递，全部保留可见，直接进入原 `WorkflowNotificationToolRow` 通知入口。V4 分发仅适配消息数据，不再单独编写接收 JSX；删除“接收消息 / 完成汇报 / 来自”自定义文案和右侧发件人。通知统一用原“消息 / 任务输出”标签、sourceLabel 名称标记、摘要、正文与背景面板，展开后保留完整正文和真实身份路径。`agentMail` 仅为 UI 输入适配，不改 Workflow wire union，不创建 qid、待回答或已回答状态；真实工作流问答仍由其真实状态决定。真实用户输入、模型上下文和邮箱消费时机不变。
+- 每个代理由原 Root Registry 分配同根唯一、跨续接/恢复稳定的可读 nickname；任务路径和内部 ID 不改。名称用于目录、详情、收发消息；原始身份仅在详情中保留。
+- 代理名称复用原 `subagentColors` 八色配色：同名在来信、发信目标、目录、运行列表、详情和递归标签中使用同一颜色；深浅主题使用原有对应文字色。目录标题中的任务描述不参与选色，续接、排序及刷新不重新分配颜色。颜色只辅助身份辨认，不表示运行/失败状态；名称继续可见，八色允许复用，不新增颜色设置或持久化状态。
+- 名称旁的头像直接复用原 `WorkflowAgentFace` 小方脸、眼睛与减少动态效果规则；普通子代理以名称颜色填充头像，不另建头像色板或保存头像状态。来信、发信目标、Agent 摘要、目录、详情及各层标签保持同一身份色；头像为装饰，原状态文字和图标继续表达真实执行状态。原 Workflow 的九色编号规则保持不变。
+- 普通代理头像缺少实时执行状态时显示中性的双眼，不把未知状态当作等待；目录及运行列表使用已有代理状态选择运行双眼、成功或失败表情，只有真实 waiting/blocked 才使用原三点等待表情。历史消息和标签不推断当前执行状态，不增加状态订阅或持久化；原 Workflow 的默认等待行为保持原义。
+- 每层显示该代理全部下级的数量和运行数。生命周期由原 Root Registry 发出，原父会话及沿途祖先各接收一次状态投影；不携带聊天正文，不唤醒模型，不改变消息队列。冷恢复仍由持久父关系校验树。
+- 子代理详情内可继续打开自己的下级代理，形成递归详情区域；宽面板并列显示所属代理及下级区域，窄面板进入下级并保留返回入口。输入框上方和详情右上角均有下级代理入口及运行数；不重新创建运行实例，不改变 Root 控制准入。
+- “新标签页”在存在当前会话时提供“代理列表”，打开既有代理目录；空会话禁用该能力，不伪造目录。
+
 父会话 Agent 工具块中的子智能体详情入口使用 workspace 右侧共享面板，而不是
 workbench 分屏。拿到 child session 目标后，用户点击 Agent 摘要行或按 Enter/Space
 直接创建或激活右侧 tab，不再先展开工具详情再点击二级按钮。每个 `childSessionId`
@@ -10,9 +30,20 @@ session 分屏能力不变。
 
 适用范围：桌面端、普通 Web 和手机 `/remote` 的 child 详情入口。桌面端和普通 Web
 使用右侧 tab；手机
-`/remote` 复用现有右侧抽屉。子智能体目录及分页只在桌面端和
-普通 Web 提供。本功能不改变 owner、lease、snapshot、
+`/remote` 复用现有右侧抽屉。原顶层子智能体目录及分页入口在桌面端和
+普通 Web 提供；子详情内部的递归目录和下级数量入口也用于手机 `/remote`。此处为当前源码能力，
+不代表独立完成了手机实机验收。本功能不改变 owner、lease、snapshot、
 queue 或 replayable 恢复语义。
+
+```mermaid
+flowchart LR
+  Registry[原 Root Registry] --> Events[直接父级及沿途祖先的状态事件]
+  Events --> Projection[同一 V4 投影与冷恢复]
+  Projection --> Pane[每层代理详情与数量]
+  Draft[子窗口草稿] --> Control[原 Root 控制准入]
+  Control --> Runner[原代理身份续接或停止]
+```
+
 
 ## 状态模型
 
@@ -71,6 +102,20 @@ Agent / Task 摘要行激活（永远不展开）
 stop 和 permission/elicitation 响应；单 turn workspace-only 文件撤销是唯一显式写能力例外。
 provider 自动 retry 的只读状态不属于手动 retry 操作，允许显示在当前运行 turn 底部。
 
+详情底部另有独立的子代理用户控制区，通过原 Root 的 `controlSubagent` 命令暂停目标或提交新提示词；
+不解锁 child `SessionPane` 的 composer。该区共用 Main 的聊天输入外壳、上下文用量展示和单一发送/暂停动作位：
+运行且空草稿显示暂停，有非空草稿显示发送，空闲空草稿禁用发送。用量来自 child 自身的 session projection，
+不展示模型、思考强度或权限选择。运行中输入沿原安全边界处理，空闲或已停时沿原身份续接；
+发送失败保留草稿。手机 `/remote` 沿用 Main 的回车换行、按钮发送和防 iOS 聚焦放大字号；
+桌面仍为 Enter 发送、Shift+Enter 换行，并保留输入法组合保护。
+发送/暂停按钮通过 `ChatPromptEditor` 的共享纯展示组件供 Main、默认 editor 和 child 控制区复用，
+只接收展示参数和动作回调，不接管草稿或命令准入。Enter 判断复用 `shouldSubmitLexicalEnter`，
+Ctrl/Meta 不误触发送，Shift、IME 与手机 Enter 换行仍遵守 Main 的同一规则。
+首次打开已完成 child 详情时，用量从 child 自身的事件及持久化消息恢复；
+容量来自 child 自身的模型能力事实，不借用父模型，不为只读查询另建 child runtime。
+完整控制链路与验收约束见
+[子代理用户控制与 V2 邮箱收口](../apps/zcode-cli/docs/design/v2/tool/00-tool-change-chain.md#子代理用户控制与-v2-邮箱收口2026-10-27)。
+
 ```text
 child turnHeader.actions.canRewindFiles
 ├─ false -> 撤销按钮 disabled；不发 query/command
@@ -113,8 +158,8 @@ fresh child 实际模型 -> ModelSelected(previousModelRef=null, modelRef=X)
 - Main 与 child 复用 `SessionPane -> ConversationTimeline`，不得为 child 增加第二套状态组件。
 - 两类事实均不进入父 Agent 摘要卡，不改变 child 只读门禁，也不新增 parent mirror。
 
-子详情继续透传打开 callback，并显式继承 `rootSessionId`；当前 runtime 禁止 subagent 派生
-subagent，因此这里只保留递归 UI 身份和 reducer 合同，不恢复 nested runtime 能力。
+子详情显式继承 `rootSessionId`，下级详情留在所属子窗口的递归区域；V2 runtime 支持多级派生。
+递归 UI 只保存打开/关闭和激活状态，代理关系、状态与数量仍来自原 session projection。
 
 ## 实时事件边界
 
@@ -169,7 +214,8 @@ publisher(parent) -> parent timeline/index/legacy delivery
   行内
   Prompt/输出；缺少 child 目标或启动前失败时保持静态单行摘要。
 - 运行中 child 在打开后持续追加 text/reasoning/tool/status，非激活和隐藏 parent 分组也不中断。
-- 运行中 child 发生 provider retry 时，详情当前 turn 底部显示统一的 `x/total` 状态并在有效进展后消失；输入区保持不存在。
+- 运行中 child 发生 provider retry 时，详情当前 turn 底部显示统一的 `x/total` 状态并在有效进展后消失；
+  conversation composer 保持只读，独立用户控制区仍只走 Root `controlSubagent` 准入。
 - 改动后新建 child 的首个 turn 显示实际解析模型，完整冷启后仍恢复；旧 child 不回填，Main 首轮不新增 marker。
 - 切换父 task 只切换 child tab 可见组；workspace 共享 tab 不随 session 切换。
 - child raw event 不改变父 topic sequence/活跃时间；parent mirror 状态仍正常更新。
@@ -188,13 +234,15 @@ Host 使用同一 Agent 的只读 `session/list(sessionIds)` 查询持久化类�
 属于请求 workspace 后返回；显式的不同身份仍拒绝。普通列表继续排除 child，查询不回写身份或激活 runtime。
 每个会话必须与当前 attachment 的 workspace identity 和 cwd 相符；父关系缺失、成环或跨工作区时拒绝。
 普通远端主任务仍必须有项目，不按 ID 前缀或旧索引行识别子会话，不补建子会话 task 行，也不扩大目录范围。
+下表的“用户输入”指直接发往该 session 的普通输入命令；V2 child 的独立控制区仍以 Root 为命令目标，
+不改变该只读准入，也不将 Workflow child 纳入 V2 控制。
 
-| 持久化类型 | 项目解析 | 主列表 | 用户输入 |
-| --- | --- | --- | --- |
-| `interactive`、`fork`、`workflow_parent` | 自身任务的项目 | 可见 | 保持原有准入 |
-| `subagent_child`、`workflow_child` | 校验父链后使用所属主任务项目 | 隐藏 | 只读 |
-| `selection_side_chat` | 校验父链后使用所属主任务项目 | 隐藏 | 可聊天，保留辅助对话自己的命令限制 |
-| `nested_workflow_child` | 按持久化工作流子会话处理；不新增创建入口 | 隐藏 | 只读 |
+| 持久化类型                               | 项目解析                                 | 主列表 | 用户输入                           |
+| ---------------------------------------- | ---------------------------------------- | ------ | ---------------------------------- |
+| `interactive`、`fork`、`workflow_parent` | 自身任务的项目                           | 可见   | 保持原有准入                       |
+| `subagent_child`、`workflow_child`       | 校验父链后使用所属主任务项目             | 隐藏   | 只读                               |
+| `selection_side_chat`                    | 校验父链后使用所属主任务项目             | 隐藏   | 可聊天，保留辅助对话自己的命令限制 |
+| `nested_workflow_child`                  | 按持久化工作流子会话处理；不新增创建入口 | 隐藏   | 只读                               |
 
 2026-10-19 回归：原修复仅识别 `subagent_child`，工作流与辅助对话仍以 child ID 查项目。
 项目继承与只读准入分别判断类型，不能用 `parentID` 或同一个只读开关代替；混合父链逐层校验，

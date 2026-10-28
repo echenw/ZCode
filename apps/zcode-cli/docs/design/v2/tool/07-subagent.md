@@ -2,6 +2,48 @@
 
 模型可见工具名是 `Agent`，历史别名是 `Task`。本设计文档称为 `Subagent`，但实现时需要保留 `Agent` 作为模型可见工具名，与兼容的 Claude Code 插件生态中的 agent 配置、transcript 和 SDK 事件保持一致。
 
+## 当前适用模式与复用边界
+
+本节以 `69494d27` 加当前工作树的源码为据；实现状态与本轮运行证据分别维护，运行结果见
+[既有 V2 验收记录](./07-subagent-v2-acceptance.md)。本文件前半部保留 `Agent` 的兼容设计形态，
+其中 team、remote、fork/worktree 等设计描述不能直接视为 ZCode 已实现；当前范围以
+[ZCode 当前实现](#zcode-当前实现)和 [V2 契约](#multi-agent-v2-tree-control-2026-10-26)为准，
+“Explore MVP”仅为历史基线。
+
+| 能力 | 原有正式链路 | V2 增强与边界 |
+| --- | --- | --- |
+| 执行与状态 | 原 `Agent` / `Task`、runner、`RuntimeTaskRegistry`、前后台等待和停止 | 复用原 Runner；Root Registry 唯一拥有整树身份、路径、generation、邮箱和用量，session view 只限定枚举范围 |
+| 消息与回复 | `SendMessage`、`RespondToCoordinator`、pending queue、完成通知 | 增加同根树路径寻址、`queue_only` / `trigger_turn` 分离；V2 回复与完成统一进入直接父级邮箱，不叠加旧 command queue |
+| 续接与存储 | 原 agent/child session 续接及 SQLite history | 持久化图/邮箱和继承上限；冷恢复不伪装旧执行仍在运行，显式续接仍用原身份及公开控制绑定 |
+| 目录与详情 | 原代理目录、完整只读 child conversation | 增加稳定昵称、递归下级详情、树数量和独立用户控制区；不解锁 child composer，不另建 Runtime |
+| 预算与恢复 | 原请求重试和流恢复 | 增加树执行/驻留/用量准入；复用默认 10 次请求重试和 10 次流恢复，不增加 Agent 整轮重放 |
+| Workflow | 脚本多阶段、并行、类型化结果、Save/Amend/Resume 与产物保留 | 与自由代理树并存；正式阻塞问答继续只用于 Workflow |
+
+保留所有现有公开入口。旧 `SendMessage` 的 terminal 自动续接不等同于 V2 `send_message`：
+后者只投递，不唤醒 idle 目标；V2 `followup_task` 才显式发起原身份续接。
+V2 普通提问/回答属于 `MESSAGE`，不创建正式待回答状态；`MESSAGE` / `FINAL_ANSWER` 不强制增加模型请求。
+`wait_agent` 等待本代理的活动通知，不读取正文、不启动 idle 目标；前台 `Agent` 等待被取消也不能据此认定 child/后代已结束。
+普通 Main Stop 只停 Main 当前执行，目标/子树/整树停止须走对应显式范围。
+
+Workflow 的 `escalate` / `ResolveWorkflowQuestion` 绑定正在运行的 ask、qid 和内存 deferred；
+ask 取消或进程退出后不能继续给旧 qid 作答，resume 后重新提问。该生命周期不能直接套到 idle V2 身份上。
+依据为 [Workflow 问答桥接](../../../../packages/bootstrap/src/app/workflow-driver-escalation.ts)与
+[停驻注册表](../../../../packages/bootstrap/src/app/workflow-escalation-registry.ts)，
+脚本能力仍由 [Workflow 文档](../../../../../../docs/dynamic-workflow/launch.md)维护。
+原执行/投递与新控制的边界可定位至 [Runner](../../../../packages/core/src/subagent/runner.ts)、
+[V2 Controller](../../../../packages/core/src/multi-agent/controller.ts)、
+[回复准入](../../../../packages/core/src/runtime/methods/subagent-messages.ts)和
+[持久化](../../../../packages/core/src/multi-agent/persistence.ts)。
+
+## 2026-10-28 复审修复边界
+
+- 同一持久代理图补充原生 spawn 的身份和生命周期；Host 再校验当前分支创建调用、同项目和真实父关系。目录读取不启动 runtime。冷恢复后的普通事件不会清空有效 child；退出时未完成的执行保持 lost，后代沿原父链读取。
+- Root 重绑孙代理后，旧 `RespondToCoordinator` 仍投递真实父级邮箱，不进入 Root 的旧唤醒队列。旧 `SendMessage`、V2 followup 和用户续接在原 Runner 共用容量和 token 准入，并在首次异步操作前预留执行槽。
+- 工具执行器持久化正式 operation；Host 保留真实 wire name，UI 按可信 operation 复用原 Agent / SendMessage 及直接 child 入口。默认、自定义和缩短命名空间走相同链路，同名 MCP 不靠后缀归类。
+- 昵称继续由 Root Registry 分配，摘要、消息、目录与递归详情共用名称、颜色和 Workflow 头像。旧 Agent 单行摘要与完整子会话详情保留，已无法展开的内联详情及其私有依赖移除；原 Workflow 正式问答仍独立按真实 qid 展示。
+
+端到端约束见 [Tool Change Chain](00-tool-change-chain.md#复审确认的-v2-链路修复2026-10-28)；本轮运行结果只追加到[验收总账](07-subagent-v2-acceptance.md)，不覆盖旧轮次证据。
+
 ## 定位
 
 `Agent` 不是一个普通函数调用，而是一个小型 agent runtime 入口。它根据输入选择一种执行形态：
@@ -106,7 +148,7 @@ agent definition 的核心字段：
 | `model` | agent 默认模型，`inherit` 表示继承父模型 |
 | `effort` | 推理 effort 覆盖 |
 | `permissionMode` | agent 内部工具权限模式。普通 worker 默认使用 `acceptEdits` |
-| `maxTurns` | agent 内部 query loop 最大轮数 |
+| `maxTurns` | 保留的 profile 配置字段；当前 Core 常规 loop 不按该值硬停止，不能把 Explore 的构造缺省值 4 当作实际轮数上限 |
 | `skills` | 启动时预加载的 prompt skill |
 | `mcpServers` | child 可见的 parent MCP server 范围；设计上可支持引用或 inline config，ZCode 当前只接受 parent server name 列表 |
 | `requiredMcpServers` | agent 可用性前置条件，必须有匹配 server 且有工具 |
@@ -156,7 +198,8 @@ AGENTS.md；Explore、显式关闭注入的 custom agent 以及父 snapshot 没�
 3. 应用 agent 的 `tools`、`disallowedTools` 和全局 subagent 过滤（区分同步与后台 agent）。
 4. agent 专属 MCP server 初始化后，其 MCP tools 与 resolved tools 合并并按 name 去重。
 
-全局过滤规则：
+旧非 V2 subagent 的过滤设计如下；当前 V2 非 Explore child 可在继承的有效工具上限内继续派生，
+不能将下列“禁止递归”套到已启用的 V2 自由树。内建 Explore 仍保持只读且不能递归。
 
 - MCP tools 对所有 agents 可用。
 - `ExitPlanMode` 只在 plan-mode agent 中特殊允许。
@@ -263,7 +306,8 @@ metadata 至少保存：
 | `worktreePath` | worktree agent resume 时恢复 cwd |
 | `description` | notification 用原始描述 |
 
-`SendMessage` 可以继续一个已 spawned subagent：
+以下为旧兼容设计中的续接形态；当前 ID 寻址、active sink 和失败行为以
+[SendMessage 当前范围](#sendmessage-当前范围)为准，不据此新增 name alias 或 worktree/fork 实现：
 
 - `to` 可以是注册过的 name，也可以是 raw `agentId`。
 - running task 收到消息时，只把文本放入 `pendingMessages`，在下一次 tool round 边界 drain。
@@ -396,7 +440,7 @@ ZCode 应把 hook/MCP/skill 都视为外部 I/O 或扩展边界，必须带 trac
 
 - 模型可见工具名仍为 `Agent`；`subagent_type` 省略时默认 `general-purpose`，显式值通过当前 runtime 已加载的 agent profile 解析。
 - profile-backed agent 支持同步运行和 `run_in_background: true`。后台任务继续使用 `RuntimeTaskRegistry`、child session、completion notification 和 runtime command queue，不建立第二套任务状态。
-- runtime 仅在 `SubagentPort.sendMessage` 可用时注册模型可见 `SendMessage`；当前 profile-backed child 固定关闭 subagent 能力且不注入该 port，因此不会注册 `SendMessage`。若未来 child 提供该 port，tool allowlist/disallowlist 仍会继续过滤模型可见工具。
+- runtime 仅在 `SubagentPort.sendMessage` 可用时注册模型可见 `SendMessage`。V2 关闭时 profile-backed child 不注入该 port；V2 开启后非 Explore child 可递归派生并继承同根控制端口，tool allowlist/disallowlist 仍按父级权限上限过滤实际工具。
 - 内建 agent 包含默认的 `general-purpose` 和只读搜索用的 `Explore`；project/user profile 可以覆盖 system prompt、tool policy、model、permission mode、skills 和 background 设置。profile 的 `tools: ["*"]` 仍需经过全局 child tool filter、profile `disallowedTools` 和 runtime allow/disallow 规则收敛。
 - provider-visible `TaskStop` 可以停止当前 runtime 中已经 background 的 `local_agent` / `local_bash`；`local_agent` 的 result `command` 使用短 `description`，不得回退为完整 `prompt`。
 
@@ -446,18 +490,18 @@ Child finish    -> no parent MCP cleanup
   `Agent` tool call 的 `parentToolCallId` 作为 row 展示锚点。不得用本次 `SendMessage` call id 覆盖，
   也不得为同一次 resume 再补发 `BackgroundTaskStarted`；Stop 继续走现有 runtime task abort 路径。
 - `status: "success"` 只表示消息已被 `queued`、`steered` 或通过 `resumed_background` 接受，不表示目标 agent 已读取、接受任务或回复。
-- lowercase `send_message` 是独立的 session mailbox 工具，不复用 `SendMessage` 的 local-agent 路由、output 或 display 语义。
-- 当前没有独立的通用 resume tool，也不把 fork、worktree、team 或跨 session mailbox 能力隐式归入 `SendMessage`。
+- 旧 lowercase `send_message` session mailbox 工具与 V2 命名空间下的 `send_message` 操作须按注册身份区分；V2 操作经同根控制器寻址，不能沿用旧 `SendMessage` 的 terminal 自动续接语义。
+- 旧 `Agent` 工具族没有独立的通用 resume tool；V2 提供显式 `followup_task`，仍复用原 Runner。fork、worktree、team 或跨根投递不隐式归入 `SendMessage`。
 
 ### RespondToCoordinator 当前范围
 
-- `SendMessage` 保持 parent/main-only。running child 在当前 tool batch 结束后的合法 round 边界接收带
-  `Message from coordinator:` 标识的 steer input，不中断正在执行的单个工具或 parallel batch。
+- 非 V2 的 `SendMessage` 保持 parent/main-only；V2 非 Explore child 可按继承工具上限获得同根控制端口。
+  running child 在合法请求边界接收指导，不中断正在执行的单个工具或 parallel batch。
 - coordinator response port 已配置、`taskType === "subagent_child"` 且未被全局
   `toolDisallowlist` 禁用时，child 才暴露 child-only `RespondToCoordinator`。Explore runtime 会在最终
   allowlist 求交后补回这个 child control tool；Plan mode 通过显式 capability 放行，不把 session
   mutation 伪装成 read-only。
-- `RespondToCoordinator` 只把回复排入 parent runtime command queue，不结束 child 当前任务；enqueue
+- 非 V2 的 `RespondToCoordinator` 把回复排入 parent runtime command queue，不结束 child 当前任务；enqueue
   success 不表示 parent 已经读取、持久化或回复。
 - response command 被 parent drain 后，完整 `<summary>` / `<message>` carrier 以 source
   `subagent_message`、visibility `model-only` 写入 parent model history 和 session store。它不进入用户
@@ -466,6 +510,9 @@ Child finish    -> no parent MCP cleanup
 - synthetic user message source `subagent_message` 不是 `SessionEventType.SubagentMessage`
   lifecycle/progress event，也不是 child transcript 镜像。完整契约见
   [Subagent RespondToCoordinator](../../../../../../docs/subagent-respond-to-coordinator.md)。
+- V2 复用同一回复入口，但通过 `enqueueSubagentMessage` 的同根/直属父级及 stale-branch 校验后，
+  仅向原 Root Registry 邮箱提交一条 `MESSAGE`，不再入旧 command queue。完成结果同样只提交
+  直接父级的一条 `FINAL_ANSWER`；消费沿既有请求边界及持久化消息 ID 确认，不因回复或完成消息唤醒 idle Main。
 
 ### SendMessage 与 TaskStop display projection
 
@@ -490,7 +537,7 @@ Child finish    -> no parent MCP cleanup
 - `WorktreeIsolationPort`：创建、检测变更、清理和恢复 worktree。
 - `RemoteAgentPort`：远程 agent eligibility、bundle、launch、status、notification。
 
-最低测试集：
+下列保留旧 `Agent` 设计的验收场景；未落地分支不是当前 PASS，V2 场景按后文独立适用：
 
 - 省略 `subagent_type` 在 fork off 时选择 `general-purpose`，fork on 时走 fork。
 - unknown agent type 和 denied agent type 返回不同结构化错误。
@@ -505,3 +552,81 @@ Child finish    -> no parent MCP cleanup
   需要覆盖 child runner/model promise 永不 settle 时，外层 `Agent` 仍能停止等待，静默超时
   需要覆盖 child 没有任何 session event 且 promise 永不 settle 的场景。
 - 所有 spawn、tool call、hook、MCP、task state、notification、resume 事件都携带同一个 `traceId`，并记录 parent session/turn/toolCall/span 关系。
+
+
+## Multi-Agent V2 tree control (2026-10-26)
+
+V2 is opt-in through `multiAgentV2.enabled`. Its six operations use a configurable namespace; the usual provider-safe function name is `<namespace>_<operation>` (default `collaboration_spawn_agent`, etc.), with a stable shortened alias when the provider's 64-character limit requires one. Bare names are available to internal callers through an empty namespace; the public configuration keeps the upstream nonempty namespace contract. Native declarations and ToolSearch use the same registered entries and permission filters. The existing ToolSearch local/native modes must preserve the exact registered V2 schemas, configured visibility, and child Profile permission ceiling; selecting a resident V2 tool does not convert it into a DeferredToolCall target. The plan conditions Code Mode integration on an existing corresponding execution mode. This runtime has no such general tool-call interpreter: NodeRepl injects the browser bridge, and script workflows expose workflow agents rather than the ToolRegistry. A Codex-style Code Mode bridge and its non_code_mode_only exposure switch are therefore not claimed as implemented or tested; this conditional scope does not waive the existing ToolSearch paths. Disabling native tools removes these entries; direct messaging and wait have independent gates.
+
+The existing root `RuntimeTaskRegistry` is the sole owner of Agent records, task paths, pending mailbox contents, current run generation and usage. A session-scoped registry view isolates ordinary task enumeration and branch generation. The V2 controller routes commands to the original runner callbacks stored with each record; it does not create a second task graph. Main, children and grandchildren share this owner.
+
+`spawn_agent` validates a unique sibling task name, reserves the canonical path synchronously, checks the root execution and residency limits (default four including root), and starts the original background runner. Accepted child execution owns its cancellation independently of the calling turn. `send_message` only queues/delivers; idle agents are not resumed. `followup_task` reuses the same agent and child session, serializes admission against other followups, and restores the transcript through the original parent runner. `interrupt_agent` stops the current turn, rejects root/self, and retains identity. `list_agents` includes idle and unloaded identities. `wait_agent` subscribes before checking mailbox activity, accepts 10s–1h timeouts (30s default), and returns activity metadata without bodies.
+
+Parent completion and explicit target/tree cancellation have separate lifecycles. Child terminal cleanup must not cancel admitted descendants or delete their mailboxes. V2 final results go only to the direct parent's retained mailbox; the legacy runtime command delivery path remains for non-V2 tasks. A host process exit ends execution; in-process identities must never be presented as still computing after restart. Runtime callbacks are not serializable; cold Host restoration requires a persisted graph binding and is reported separately from same-process session restoration.
+
+`fork_turns=all` copies only valid model-visible history, excluding hidden reasoning and incomplete tool pairs; `none` starts with the task and inherited environment/policies. An implicit-role full fork inherits the parent's actual provider/model/effort; an explicit role or fresh child applies its Profile selection. Explicit V2 model/effort overrides are validated, separately gated and rejected for full-history forks. Child tool permissions are an intersection with the parent's effective tool surface, including explicit custom profile allowlists. Built-in Explore remains read-only and does not acquire write tools through recursive spawn.
+
+```mermaid
+flowchart TD
+  C[Caller tool] --> R[Root task registry]
+  R --> A[Atomic path and capacity admission]
+  A --> P[Original runner]
+  P --> S[Child session store]
+  P --> M[Parent mailbox and events]
+  M --> R
+```
+
+Verification includes path conflicts and cross-tree rejection, QueueOnly versus TriggerTurn, concurrent followup admission, Main Stop independence, generation-fenced terminal results, retained queued messages, bounded capacity, namespace/gate schemas, and runtime prompt identity. Local injected-model tests establish runtime semantics; paid Provider and Desktop end-to-end acceptance remains a distinct evidence requirement.
+
+Terminal artifact I/O is not a state reservation. After any artifact-write await, success and failure must atomically verify that the same generation remains nonterminal before changing the registry, delivering a final notification or publishing completion. An accepted Stop wins over an older result even when no followup has started. A newer followup generation retains its sink, residency and cancellation handle when an older artifact write finishes. The registry's terminal-transition hook releases non-root residency for success, failure and interruption.
+
+The same fence applies to the foreground `Agent` compatibility entry. A superseded foreground result fails its old caller with cancellation instead of returning stale success, and its failure handler must not rewrite the retained Stop or newer generation.
+
+V2 Stop commits its terminal state before artifact I/O. Its I/O completion must retain the current owner snapshot, including messages accepted while the write was pending; restoring the pre-write snapshot would discard acknowledged QueueOnly deliveries. Legacy Stop keeps its existing commit/rollback behavior.
+
+The fixed upstream wait contract clamps integer requests below ten seconds and describes that clamp in the receipt. Requests above one hour fail validation instead of silently waiting for a different duration. The omitted timeout remains thirty seconds.
+
+`minWaitTimeoutMs`, `maxWaitTimeoutMs` and `defaultWaitTimeoutMs` override those defaults. All are integer milliseconds in `0..3600000`, with `min <= default <= max`; zero is valid. Native descriptions, controller timing, receipt text and tool-executor timeout use the same resolved configuration.
+
+Each admitted spawn or idle followup records the initiating path and turn separately from the immutable direct parent. Successful completion emits a metadata-only Completed activity to that initiating session/turn; it does not queue a result body there or wake an idle initiator. Final answers and failure results continue to the direct parent mailbox; explicit interruption emits lifecycle activity without fabricating a FINAL_ANSWER. QueueOnly delivery and steering an already running task do not replace that turn's initiator. The attribution survives graph persistence, and activity resolves recipients inside the same root owner. A followup targeting Root is rejected whether Root is idle or running.
+
+### V2 persistence and shared usage admission
+
+The existing runtime task registry remains the only mutable owner of identity, mailbox, execution and residency state. A versioned `multi_agent/graph` root-session entry is only a serialized projection. A tool acknowledgement waits for that projection to be saved when SessionStore supports entries. Corrupt or cross-root data fails validation before any live record is changed. Cold `running` entries become `lost`, release residency, and may be resumed under the same task path and child session with the saved profile, original parent, working directory and tool/permission ceiling. The restored runtime intersects saved tool access with current access.
+
+All actual model usage reported by the root, descendants, compaction, workspace model calls and other runtime sidecars is attributed once to the same registry identity. Failed attempts with reported usage count too; cache/reasoning counters remain separate and are not added twice to total tokens. Exhaustion blocks later model requests and new/resumed child generations, and the cumulative usage survives cold recovery. This follows upstream rollout-budget admission after provider usage is reported: already in-flight requests and unreported provider consumption cannot be advertised as an absolute prepaid cost ceiling.
+
+Message-board notifications use a single `sendActive` steer attempt fenced by the actual active turn ID; no idle queue or automatic wake is permitted for board broadcasts.
+
+`preserveForkPrefix` defaults to true for V2. It retains the valid model-visible prefix and appends the child's current system sections after inherited context, so ancestor identity/role does not remain the latest identity. False rebuilds the child system prefix and copies only visible conversation messages. Both modes exclude reasoning blocks, orphan tool results and incomplete tool-call pairs; neither inherits live process handles or local approval grants. A provider without mid-conversation system support still uses the existing system-normalization rules, so preserving the internal prefix is not a claim of byte-identical provider requests or improved cache hits. The fork entry records its chosen mode for cold restore; a committed compact boundary supersedes the original prefix.
+
+Compaction treats a preserved full fork as three segments: inherited visible history, the child's own current context prefix, and the child's conversation. It summarizes history while retaining the child's own identity, role, AGENTS and cooperation instructions before the first post-compact request. The compacted result must not reinsert the old inherited prefix; an ordinary microcompact retains the transformed inherited history. Canonical-prefix reconciliation uses the same segmentation for manual, automatic and reactive compact, including same-turn continuation and cold resume.
+
+Durable-recovery acceptance includes two separate operating-system processes using the production SQLite SessionStore and AgentRuntime. The writer commits completed child transcripts, an idle mailbox, and an executing child, flushes the graph, closes SQLite and exits. A fresh reader process reopens the same database, observes the original IDs and the executing child's honest `lost` state without invoking a model, and explicitly resumes both identities. The resumed requests must retain committed history, consume accepted mail exactly once, and retain the original permission/tool ceiling even when the new root is more permissive. Local injected Models exercise this storage/runtime boundary without claiming external-provider acceptance; both process exit codes are required evidence.
+
+An idle V2 mailbox is admitted into the existing steer queue at the first model-step boundary of an explicitly started turn. This boundary awaits graph hydration, fences delivery with the actual active turn ID, and persists the usual user-message anchor before acknowledging delivery in the Registry. Registering a sink must not start a timer-based retry that can miss an entire short turn or redeliver a message after consumption. Live delivery makes one steer attempt; a not-yet-active turn retains the accepted message in the same mailbox for the startup boundary. Ordinary non-V2 sink behavior remains compatible.
+
+Permission hydration is also bounded by the current caller. A child restored from an older, more permissive session cannot replace the launch-time permission ceiling with its saved execution state. After hydration, intersect the base mode again and keep Plan enabled if either the saved child or current launch policy requires it; persist that effective state before executing the resumed turn. Acceptance invokes the actual Write tool through the production permission service after the root tightens its policy and checks that no file is written.
+
+The retained launch snapshot stores `inheritedPermissionMode` as the base mode and `inheritedPlanEnabled` as a separate boolean. Historical snapshots containing `mode=plan` remain readable and conservatively imply base Build plus Plan. Base-mode selection follows the existing permission service: reserved Auto denies execution, Build is stricter than Edit, and Guarded is an otherwise-YOLO mode with mandatory dangerous-action prompts. Guarded therefore cannot replace a narrower Build/Edit ceiling. Plan is combined independently and must not erase a base Auto denial or a narrower original mode.
+
+The original caller also freezes `inheritedDeveloperInstructions` for default children at admission: the configured child override, otherwise the caller's effective developer guidance, otherwise an explicit empty string. Specialized roles continue to use their own saved Profile. Root rebinding and cold restore prefer this saved value, including empty strings, over a later root override; they cannot replace a grandchild's inherited specialized-parent guidance with the root's unrelated guidance. Existing saved graphs without the optional field retain the prior fallback behavior.
+
+```mermaid
+sequenceDiagram
+  participant Runtime as Child Runtime
+  participant Registry as Root Registry
+  participant Store as SessionStore
+  participant Model as Active Model
+  Runtime->>Registry: Read pending mail for admitted turn
+  Registry-->>Runtime: Original message IDs and generation
+  Runtime->>Runtime: Fence turn and generation, stage guide
+  Runtime->>Store: Commit user message and consumption anchor
+  Store-->>Runtime: Durable completion
+  Runtime->>Registry: Acknowledge original message ID
+  Runtime->>Model: First request includes accepted mail
+```
+
+When a descendant finishes, its retained control binding is rebound to the root's lazy execution factory using the registry's saved execution snapshot. This allows the finished parent Runtime and its timers to be released without keeping a second live graph or dropping descendants. Root/child/grandchild controls still target the same agent IDs and child sessions.
+
+V2 lifecycle events are persisted to the direct parent session and projected once to each further ancestor, including Root, using the same registry identity. Projection payloads retain the source session/turn and true parent path; each destination uses its own event sequence and does not claim a descendant turn ID as its own turn. Raw child streams continue through existing event sinks. The projections support replay and UI and are never an alternative task registry or a mailbox wakeup.
