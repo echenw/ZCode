@@ -168,6 +168,62 @@
       "timingPolicy": "fast-text",
       "source": "synthetic",
       "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-root-spawn",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-root-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-a-spawn",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-a-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-b-spawn",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-b-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-c-done",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+    },
+    {
+      "id": "v2-native-rewind-edited",
+      "kind": "main",
+      "timingPolicy": "fast-text",
+      "source": "synthetic",
+      "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
     }
   ]
 }

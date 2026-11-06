@@ -670,3 +670,44 @@ it("waits for the native Runner stop even after the child's final model turn has
   expect(result.projection.running).toMatchObject([{ childSessionId: f.child.id, status: "running" }]);
   expect(result.projection.ended).toEqual([]);
 });
+
+it("retains every cold native descendant after an ordinary event", async () => {
+  const f = storedNativeTree();
+  const grandchild = { ...session("native-grandchild"), parentID: f.child.id };
+  const childMessage = toolMessage({ id: "grand", tool: "custom_spawn_agent", output: { task_name: "/root/native/grand" } });
+  f.graph.tasks.push({ ...f.graph.tasks[1]!, taskId: "grand-agent", agentId: "grand-agent", childSessionId: grandchild.id,
+    parentSessionId: f.child.id, parentToolCallId: "call-grand", status: "completed",
+    multiAgent: { ...f.graph.tasks[1]!.multiAgent, agentPath: "/root/native/grand", parentPath: "/root/native", nickname: "Curie" } });
+  const getSession = f.store.getSession;
+  f.store.getSession = async (id) => id === grandchild.id ? grandchild : getSession(id);
+  const messages = f.store.messages;
+  f.store.messages = async (input) => input.sessionID === f.child.id ? [childMessage] : messages(input);
+  const result = await readSubagentTree({ rootSession: f.root, revision: 2, store: f.store,
+    readEvents: async () => [], readProjection: async () => undefined });
+  expect(result.childSessionIds).toEqual([f.child.id, grandchild.id]);
+  const source = await loadPersistedConversationMaterialization({ sessionId: f.root.id, store: f.store, memoryEvents: [] });
+  const merged = mergeColdConversationEvents({ ...source, sessionId: f.root.id, subagentTree: result.projection });
+  const p = new ProductProjection(f.root.id, "fresh-review");
+  for (const event of merged.events) p.applyEvent(event);
+  p.seedSubagents({ revision: 2, childSessionIds: result.childSessionIds, running: result.projection.running });
+  expect(p.getSnapshot().subagents.childSessionIds).toEqual([f.child.id, grandchild.id]);
+  p.applyEvent({ ...subagentEvent(SessionEventType.SubagentStopped, {}), type: SessionEventType.SessionTitleUpdated,
+    sequenceNumber: merged.events.length + 1, payload: { title: "unrelated" } });
+  expect(p.getSnapshot().subagents.childSessionIds).toEqual([f.child.id, grandchild.id]);
+  const descendant = p.getSnapshot().rows.window.find((row) => row.kind === "subagent" && row.childSessionId === grandchild.id);
+  expect(descendant).toMatchObject({ parentSessionId: f.child.id, agentPath: "/root/native/grand", status: "success" });
+  const liveSpawn = { ...subagentEvent(SessionEventType.SubagentSpawned, {
+    agentId: "grand-agent", childSessionId: grandchild.id, parentSessionId: f.child.id,
+    agentPath: "/root/native/grand", parentAgentPath: "/root/native", parentToolCallId: "call-grand", resumed: true,
+  }), sequenceNumber: merged.events.length + 2 };
+  const live = mergeColdConversationEvents({ ...source, sessionId: f.root.id, subagentTree: result.projection, memoryEvents: [liveSpawn] });
+  const liveProjection = new ProductProjection(f.root.id, "fresh-live");
+  for (const event of live.events) liveProjection.applyEvent(event);
+  expect(liveProjection.getSnapshot().subagents.running.map((item) => item.childSessionId)).toContain(grandchild.id);
+  liveProjection.applyEvent({ ...subagentEvent(SessionEventType.SubagentStopped, {
+    agentId: "grand-agent", childSessionId: grandchild.id, parentSessionId: f.child.id,
+    agentPath: "/root/native/grand", parentToolCallId: "call-grand", status: "cancelled",
+  }), sequenceNumber: live.events.length + 1 });
+  expect(liveProjection.getSnapshot().subagents.running).toEqual([]);
+  expect(liveProjection.getSnapshot().subagents.childSessionIds).toEqual([f.child.id, grandchild.id]);
+});

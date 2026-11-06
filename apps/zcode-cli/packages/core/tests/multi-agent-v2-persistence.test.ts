@@ -172,3 +172,18 @@ describe("active-only board sink fence", () => {
     expect(steerTurn).toHaveBeenCalledWith(expect.objectContaining({ expectedTurnId: "expected-turn", inputId: "board-post" }));
   });
 });
+
+it.each([false, true, undefined])("preserves the trusted first-turn fact across JSON and cold restoration (%s)", (hasStartedTurn) => {
+  const f = tree();
+  f.registry.update("child", (task) => ({ ...task, hasStartedTurn }));
+  const raw = JSON.parse(JSON.stringify(serializeMultiAgentGraph(f.registry, f.identity.rootSessionId)));
+  const restored = new InMemoryRuntimeTaskRegistry();
+  restoreMultiAgentGraph(restored, f.identity.rootSessionId, raw);
+  expect(restored.get("child")?.hasStartedTurn).toBe(hasStartedTurn);
+  if (hasStartedTurn === true) {
+    restored.update("child", (task) => ({ ...task, hasStartedTurn: false }));
+    expect(restored.get("child")?.hasStartedTurn).toBe(true);
+    restored.register({ ...restored.get("child")!, hasStartedTurn: false });
+    expect(restored.get("child")?.hasStartedTurn).toBe(true);
+  }
+});

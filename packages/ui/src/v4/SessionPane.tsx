@@ -4829,6 +4829,7 @@ export function SessionPane({
   useEffect(() => {
     if (!sessionId || subagents.revision === 0 || !onSyncSubagentSessionTabs) return;
     onSyncSubagentSessionTabs({
+      workspaceKey,
       rootSessionId: rootSessionId ?? sessionId,
       parentSessionId: sessionId,
       validChildSessionIds: subagents.childSessionIds,
@@ -4839,6 +4840,7 @@ export function SessionPane({
     sessionId,
     subagents.childSessionIds,
     subagents.revision,
+    workspaceKey,
   ]);
   useEffect(() => {
     if (!selectionSideChat || !sessionId) return;

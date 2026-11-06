@@ -540,6 +540,7 @@ describe("workspaceSidePane", () => {
     });
 
     const next = syncSubagentSessionSidePaneTabs(withInvalid, {
+      workspaceKey: "/workspace",
       rootSessionId: "root-a",
       parentSessionId: "parent-a",
       validChildSessionIds: ["child-valid"],
@@ -550,6 +551,170 @@ describe("workspaceSidePane", () => {
       "subagent-session:%2Fworkspace:root-a:child-valid",
     ]);
     expect(next?.activeTabId).toBe("subagent-directory:%2Fworkspace:root-a:parent-a");
+  });
+
+  it("uses the root manifest to drop invalid grandchildren and great-grandchildren while keeping valid descendants", () => {
+    let state = openSubagentDirectorySidePane(null, {
+      workspaceKey: "/workspace",
+      workspacePath: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+    });
+    const directoryId = state.activeTabId;
+    for (const [childSessionId, parentSessionId] of [
+      ["child-kept", "root-a"],
+      ["grandchild-kept", "child-kept"],
+      ["grandchild-old-branch", "child-kept"],
+      ["great-grandchild-old-branch", "grandchild-old-branch"],
+    ] as const) {
+      state = openSubagentSessionSidePane(state, {
+        workspaceKey: "/workspace",
+        workspacePath: "/workspace",
+        rootSessionId: "root-a",
+        parentSessionId,
+        childSessionId,
+        subagentType: "general-purpose",
+        title: childSessionId,
+      });
+    }
+
+    const next = syncSubagentSessionSidePaneTabs(state, {
+      workspaceKey: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+      validChildSessionIds: ["child-kept", "grandchild-kept"],
+    });
+
+    expect(
+      next?.tabs.filter((tab) => tab.type === "subagent-session").map((tab) => tab.childSessionId),
+    ).toEqual(["child-kept", "grandchild-kept"]);
+    expect(next?.activeTabId).toBe(directoryId);
+  });
+
+  it("isolates root cleanup and its directory fallback by remote workspace identity and root", () => {
+    const remoteA = "ssh://host-a/workspace";
+    const remoteB = "ssh://host-b/workspace";
+    let state = openSubagentDirectorySidePane(null, {
+      workspaceKey: remoteB,
+      workspacePath: "/workspace",
+      workspaceIdentity: remoteB,
+      remoteSessionId: "remote-b",
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+    });
+    state = openSubagentDirectorySidePane(state, {
+      workspaceKey: remoteA,
+      workspacePath: "/workspace",
+      workspaceIdentity: remoteA,
+      remoteSessionId: "remote-a",
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+    });
+    const directoryId = state.activeTabId;
+    for (const [workspaceKey, rootSessionId, parentSessionId, childSessionId] of [
+      [remoteA, "root-b", "child-other-root", "grandchild-other-root"],
+      [remoteB, "root-a", "child", "grandchild"],
+      [remoteA, "root-a", "root-a", "child"],
+      [remoteA, "root-a", "child", "grandchild"],
+      [remoteA, "root-a", "grandchild", "great-grandchild"],
+    ] as const) {
+      state = openSubagentSessionSidePane(state, {
+        workspaceKey,
+        workspacePath: "/workspace",
+        workspaceIdentity: workspaceKey,
+        remoteSessionId: workspaceKey === remoteA ? "remote-a" : "remote-b",
+        rootSessionId,
+        parentSessionId,
+        childSessionId,
+        subagentType: "general-purpose",
+        title: childSessionId,
+      });
+    }
+
+    const next = syncSubagentSessionSidePaneTabs(state, {
+      workspaceKey: remoteA,
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+      validChildSessionIds: [],
+    });
+
+    expect(
+      next?.tabs
+        .filter((tab) => tab.type === "subagent-session")
+        .map((tab) => [tab.workspaceKey, tab.rootSessionId, tab.childSessionId]),
+    ).toEqual([
+      [remoteA, "root-b", "grandchild-other-root"],
+      [remoteB, "root-a", "grandchild"],
+    ]);
+    expect(next?.tabs.filter((tab) => tab.type === "subagent-directory")).toHaveLength(2);
+    expect(next?.activeTabId).toBe(directoryId);
+  });
+
+  it("keeps sibling branches when a child synchronizes its local manifest", () => {
+    let state = openSubagentDirectorySidePane(null, {
+      workspaceKey: "/workspace",
+      workspacePath: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "child-b",
+    });
+    state = openSubagentDirectorySidePane(state, {
+      workspaceKey: "/workspace",
+      workspacePath: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "child-a",
+    });
+    const directoryId = state.activeTabId;
+    for (const [childSessionId, parentSessionId] of [
+      ["child-a", "root-a"],
+      ["child-b", "root-a"],
+      ["grandchild-b", "child-b"],
+      ["great-grandchild-b", "grandchild-b"],
+      ["grandchild-kept", "child-a"],
+      ["grandchild-old-branch", "child-a"],
+    ] as const) {
+      state = openSubagentSessionSidePane(state, {
+        workspaceKey: "/workspace",
+        workspacePath: "/workspace",
+        rootSessionId: "root-a",
+        parentSessionId,
+        childSessionId,
+        subagentType: "general-purpose",
+        title: childSessionId,
+      });
+    }
+
+    const next = syncSubagentSessionSidePaneTabs(state, {
+      workspaceKey: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "child-a",
+      validChildSessionIds: ["grandchild-kept"],
+    });
+
+    expect(
+      next?.tabs.filter((tab) => tab.type === "subagent-session").map((tab) => tab.childSessionId),
+    ).toEqual(["child-a", "child-b", "grandchild-b", "great-grandchild-b", "grandchild-kept"]);
+    expect(next?.activeTabId).toBe(directoryId);
+
+    const withRootDirectory = openSubagentDirectorySidePane(state, {
+      workspaceKey: "/workspace",
+      workspacePath: "/workspace",
+      rootSessionId: "root-a",
+      parentSessionId: "root-a",
+    });
+    const rootFallback = syncSubagentSessionSidePaneTabs(
+      {
+        ...withRootDirectory,
+        activeTabId: state.activeTabId,
+        tabs: withRootDirectory.tabs.filter((tab) => tab.id !== directoryId),
+      },
+      {
+        workspaceKey: "/workspace",
+        rootSessionId: "root-a",
+        parentSessionId: "child-a",
+        validChildSessionIds: ["grandchild-kept"],
+      },
+    );
+    expect(rootFallback?.activeTabId).toBe(withRootDirectory.activeTabId);
   });
 
   it("按 childSessionId 多开 selection side chat tab，并为同父实例分配序号", () => {
@@ -843,6 +1008,7 @@ describe("workspaceSidePane", () => {
     // 的场景。子会话那套 sync 回收只作用于 subagent-session，绝不能连带清掉它。
     expect(
       syncSubagentSessionSidePaneTabs(state, {
+        workspaceKey: "/workspace",
         rootSessionId: "parent-a",
         parentSessionId: "parent-a",
         validChildSessionIds: [],
@@ -1019,6 +1185,7 @@ describe("workspaceSidePane", () => {
 
     expect(
       syncSubagentSessionSidePaneTabs(state, {
+        workspaceKey: "/workspace",
         rootSessionId: "parent-a",
         parentSessionId: "parent-a",
         validChildSessionIds: [],
@@ -1027,6 +1194,7 @@ describe("workspaceSidePane", () => {
     // 连 actor 会话 id 被当成「有效子会话」误传进来也不改变结论：类型不匹配，扫不到。
     expect(
       syncSubagentSessionSidePaneTabs(state, {
+        workspaceKey: "/workspace",
         rootSessionId: "parent-a",
         parentSessionId: "parent-a",
         validChildSessionIds: ["dwf-dwfrun-1-actor_1@1"],
@@ -1165,6 +1333,7 @@ describe("workspaceSidePane", () => {
     });
     expect(
       syncSubagentSessionSidePaneTabs(state, {
+        workspaceKey: "/workspace",
         rootSessionId: "parent-a",
         parentSessionId: "parent-a",
         validChildSessionIds: [],
@@ -1312,6 +1481,7 @@ describe("workspaceSidePane", () => {
     });
     expect(
       syncSubagentSessionSidePaneTabs(state, {
+        workspaceKey: "/workspace",
         rootSessionId: "parent-a",
         parentSessionId: "parent-a",
         validChildSessionIds: [],

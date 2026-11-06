@@ -108,6 +108,7 @@ export const MultiAgentStoredGraphSchema = z.object({
     parentSessionId: z.string().optional(), parentToolCallId: z.string().optional(),
     outputFile: z.string().optional(), prompt: z.string().optional(), error: z.string().optional(),
     isBackgrounded: z.boolean().optional(), branchGeneration: z.number().int().nonnegative().optional(),
+    hasStartedTurn: z.boolean().optional(),
     multiAgent: z.object({ agentPath: z.string(), parentPath: z.string().optional(), rootSessionId: z.string(), nickname: z.string().optional(),
       resident: z.boolean(), runGeneration: z.number().int().nonnegative(), totalTokens: z.number().finite().nonnegative().optional(),
       roleWasExplicit: z.boolean().optional(), model: z.string().optional(), reasoningEffort: z.string().optional(), forkTurns: z.enum(["all", "none"]).optional(),

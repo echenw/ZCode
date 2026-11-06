@@ -1,5 +1,6 @@
 import {
   createEventId,
+  createSessionId,
   parseRuntimeInputPresentation,
   parseCompletedToolPartMetadata,
   SessionEventType,
@@ -8,6 +9,45 @@ import {
   type TurnSteerDrainedPayload,
 } from "@zcode/contracts";
 import { agentMessageFromInput } from "../projection-rows.js";
+import { HYDRATION_TRACE_ID } from "../projection-state.js";
+import type { ZCodeSessionEndedSubagent, ZCodeSessionRunningSubagent } from "@zcode/shared";
+
+export interface AgentTreeLifecycleProjection {
+  running: readonly ZCodeSessionRunningSubagent[];
+  ended: readonly ZCodeSessionEndedSubagent[];
+}
+
+/** 全树查询已校验实际创建边；祖先 transcript 没有后代的 tool part，须先补正式行再派生目录。 */
+export function hydrateSubagentTreeEvents(
+  sessionId: string,
+  tree: AgentTreeLifecycleProjection | undefined,
+  names?: Readonly<Record<string, string>>,
+): SessionEvent[] {
+  if (!tree) return [];
+  const events: SessionEvent[] = [];
+  for (const item of [...tree.running, ...tree.ended]) {
+    if (!item.agentPath || !item.parentSessionId || item.parentSessionId === sessionId) continue;
+    const nickname = names?.[item.childSessionId];
+    const payload = {
+      agentId: item.agentId ?? item.childSessionId, childSessionId: item.childSessionId,
+      parentToolCallId: item.toolCallId, parentSessionId: item.parentSessionId,
+      agentPath: item.agentPath, parentAgentPath: item.parentAgentPath, rootSessionId: item.rootSessionId,
+      agentType: item.subagentType, nickname,
+      description: nickname && item.title.startsWith(`${nickname} · `) ? item.title.slice(nickname.length + 3) : item.title,
+      providerId: item.providerId, modelId: item.modelId, reasoningEffort: item.reasoningEffort,
+      totalTokens: item.totalTokens, multiAgentTreeProjection: true,
+    };
+    const base = { sessionId: createSessionId(sessionId), traceId: HYDRATION_TRACE_ID as SessionEvent["traceId"], sequenceNumber: 0 };
+    events.push({ ...base, id: createEventId(`hydrate-tree:${sessionId}:${item.childSessionId}:spawn`),
+      type: SessionEventType.SubagentSpawned, timestamp: new Date(item.startedAt ?? 0), payload: { ...payload, status: "running" } });
+    if (item.status !== "running" && item.status !== "waiting" && item.status !== "blocked") {
+      events.push({ ...base, id: createEventId(`hydrate-tree:${sessionId}:${item.childSessionId}:stop`),
+        type: SessionEventType.SubagentStopped, timestamp: new Date(item.endedAt ?? item.startedAt ?? 0),
+        payload: { ...payload, status: item.status, summaryText: item.summary } });
+    }
+  }
+  return events;
+}
 
 /** 只补展示别名，保留工具原始输入/输出及持久化正文。 */
 export function withAgentRecipientNames(

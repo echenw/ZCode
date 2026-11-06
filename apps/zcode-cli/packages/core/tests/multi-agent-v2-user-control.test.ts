@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionId, createTraceId, multiAgentToolName, RESPOND_TO_COORDINATOR_TOOL_NAME, type ExecutionPort, type ModelRequest, type SubagentSendMessageRequest } from "@zcode/contracts";
+import { createSessionId, createTraceId, multiAgentToolName, RESPOND_TO_COORDINATOR_TOOL_NAME, SessionEventType, type ExecutionPort, type ModelRequest, type SessionEvent, type SubagentSendMessageRequest } from "@zcode/contracts";
 import type { AgentRuntimeInternal } from "../src/runtime/internal.js";
 import { createTestAgentRuntime } from "./test-agent-runtime.js";
 import { createTestModelFactory } from "./test-runtime-model.js";
@@ -305,4 +305,144 @@ it("routes a Root-rebound grandchild coordinator reply to its actual parent with
   expect(task("/root").pendingMessages?.some((message) => message.message === "GRANDCHILD_REAL_PARENT_ONLY")).toBe(false);
   expect(enqueued.mock.calls.filter(([command]) => command.mode === "subagent-message")).toHaveLength(0);
   expect(counts.get("/root")).toBe(rootCalls);
+}, 20_000);
+
+it("keeps the current generation's mailbox working when an interrupted restore finishes late", async () => {
+  const restoreEntered = Promise.withResolvers<void>();
+  const releaseRestore = Promise.withResolvers<void>();
+  const currentModelEntered = Promise.withResolvers<void>();
+  const releaseCurrentModel = Promise.withResolvers<void>();
+  const requests: ModelRequest[] = [];
+  const { runtime, core, store, context, task } = await setup(async (request) => {
+    requests.push(request);
+    if (requests.length === 2) {
+      currentModelEntered.resolve();
+      await releaseCurrentModel.promise;
+      return { finishReason: "tool-calls", text: "", usage, toolCalls: [{ id: "current-todo", name: "TodoWrite", input: { todos: [] } }] };
+    }
+    return text("completed");
+  });
+  const events: SessionEvent[] = [];
+  runtime.subscribeEvents({ onSessionEvent: (event) => { events.push(event); } });
+  const control = core.subagentPort!.multiAgent!;
+  await control.execute("spawn_agent", spawn("worker").input, context);
+  await vi.waitFor(() => expect(task("/root/worker").status).toBe("completed"));
+  const original = task("/root/worker");
+  const readMessages = store.messages.bind(store);
+  let blockNextRestore = true;
+  vi.spyOn(store, "messages").mockImplementation(async (input) => {
+    if (blockNextRestore && input.sessionID === original.childSessionId) {
+      blockNextRestore = false;
+      restoreEntered.resolve();
+      await releaseRestore.promise;
+    }
+    return readMessages(input);
+  });
+  const oldRestore = control.execute("followup_task", { target: "worker", message: "interrupted restore" }, context)
+    .then(() => undefined, () => undefined);
+  try {
+    await restoreEntered.promise;
+    await control.execute("interrupt_agent", { target: "worker" }, context);
+    await control.execute("followup_task", { target: "worker", message: "current task" }, context);
+    await currentModelEntered.promise;
+    releaseRestore.resolve();
+    await oldRestore;
+    await control.execute("send_message", { target: "worker", message: "CURRENT_GENERATION_MAIL" }, context);
+    releaseCurrentModel.resolve();
+    await vi.waitFor(() => expect(task("/root/worker").status).toBe("completed"));
+    expect(requests).toHaveLength(3);
+    expect(JSON.stringify(requests[2]!.messages)).toContain("CURRENT_GENERATION_MAIL");
+    expect(task("/root/worker").pendingMessages).toHaveLength(0);
+    expect(task("/root/worker")).toMatchObject({ agentId: original.agentId, childSessionId: original.childSessionId,
+      multiAgent: { runGeneration: 3 } });
+    expect(events.filter((event) => event.type === SessionEventType.SubagentSpawned)).toHaveLength(2);
+  } finally { releaseRestore.resolve(); releaseCurrentModel.resolve(); await oldRestore; }
+}, 20_000);
+
+it("retains an interrupted foreground identity before its first turn and resumes it after session creation", async () => {
+  const createEntered = Promise.withResolvers<void>();
+  const releaseCreate = Promise.withResolvers<void>();
+  const childTitleCommitted = Promise.withResolvers<void>();
+  const requests: ModelRequest[] = [];
+  const { runtime, core, store, context } = await setup(async (request) => { requests.push(request); return text("resumed first turn"); });
+  const createSession = store.createSession.bind(store);
+  let blockCreation = true;
+  vi.spyOn(store, "createSession").mockImplementation(async (input) => {
+    if (input.parentID && blockCreation) {
+      blockCreation = false;
+      createEntered.resolve();
+      await releaseCreate.promise;
+    }
+    return createSession(input);
+  });
+  const events: SessionEvent[] = [];
+  runtime.subscribeEvents({ onSessionEvent: (event) => {
+    events.push(event);
+    if (event.type === SessionEventType.SessionTitleUpdated && event.sessionId !== core.sessionId) childTitleCommitted.resolve();
+  } });
+  const control = core.subagentPort!.multiAgent!;
+  const foreground = core.subagentPort!.run({ ...context, agentType: "general-purpose", description: "setup worker", prompt: "first task" })
+    .then(() => undefined, (error: unknown) => error);
+  try {
+    await createEntered.promise;
+    const original = Object.values(core.multiAgentRegistry!.all()).find((candidate) => candidate.multiAgent?.agentPath !== "/root")!;
+    const path = original.multiAgent!.agentPath;
+    await control.execute("interrupt_agent", { target: path }, context);
+    expect(await foreground).toBeInstanceOf(Error);
+    expect((await control.execute("list_agents", {}, context)).agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ agent_name: path, agent_status: "interrupted" }),
+    ]));
+    expect(core.multiAgentRegistry!.get(original.taskId)).toMatchObject({ agentId: original.agentId,
+      childSessionId: original.childSessionId, status: "killed", hasStartedTurn: false });
+    releaseCreate.resolve();
+    await childTitleCommitted.promise;
+    await control.execute("followup_task", { target: path, message: "resume original setup worker" }, context);
+    await vi.waitFor(() => expect(core.multiAgentRegistry!.get(original.taskId)?.status).toBe("completed"));
+    expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests[0]!.messages)).toContain("resume original setup worker");
+    expect(core.multiAgentRegistry!.get(original.taskId)).toMatchObject({ agentId: original.agentId,
+      childSessionId: original.childSessionId, hasStartedTurn: true, multiAgent: { runGeneration: 2 } });
+    expect((await store.getSession(original.childSessionId!))?.parentID).toBe(core.sessionId);
+    expect(events.filter((event) => event.type === SessionEventType.SubagentSpawned)).toHaveLength(1);
+  } finally { releaseCreate.resolve(); await foreground; }
+}, 20_000);
+
+it("does not treat missing history of a previously started child as an unstarted first turn", async () => {
+  const requests: ModelRequest[] = [];
+  const { core, store, context, task } = await setup(async (request) => { requests.push(request); return text("original history"); });
+  const control = core.subagentPort!.multiAgent!;
+  await control.execute("spawn_agent", spawn("worker").input, context);
+  await vi.waitFor(() => expect(task("/root/worker").status).toBe("completed"));
+  const original = task("/root/worker");
+  expect(original.hasStartedTurn).toBe(true);
+  const readMessages = store.messages.bind(store);
+  vi.spyOn(store, "messages").mockImplementation((input) => input.sessionID === original.childSessionId ? Promise.resolve([]) : readMessages(input));
+  await expect(control.execute("followup_task", { target: "worker", message: "must not silently start over" }, context)).rejects.toThrow("No transcript found");
+  expect(requests).toHaveLength(1);
+  expect(task("/root/worker").childSessionId).toBe(original.childSessionId);
+});
+
+it("reuses the original allocated identity when interrupted before any child session was persisted", async () => {
+  const requests: ModelRequest[] = [];
+  const { core, store, context, task } = await setup(async (request) => { requests.push(request); return text("first execution after early pause"); });
+  const admitted = Promise.withResolvers<void>();
+  const unsubscribe = core.multiAgentRegistry!.subscribe!(() => {
+    const current = task("/root/worker");
+    if (current?.control && current.hasStartedTurn === false) admitted.resolve();
+  });
+  const control = core.subagentPort!.multiAgent!;
+  const start = control.execute("spawn_agent", spawn("worker").input, context).then(() => undefined, () => undefined);
+  try {
+    await admitted.promise;
+    const original = task("/root/worker");
+    await control.execute("interrupt_agent", { target: "worker" }, context);
+    await start;
+    expect(await store.getSession(original.childSessionId!)).toBeNull();
+    expect(requests).toHaveLength(0);
+    await control.execute("followup_task", { target: "worker", message: "first real turn in original identity" }, context);
+    await vi.waitFor(() => expect(task("/root/worker").status).toBe("completed"));
+    expect(task("/root/worker")).toMatchObject({ agentId: original.agentId, childSessionId: original.childSessionId, hasStartedTurn: true });
+    expect((await store.getSession(original.childSessionId!))?.parentID).toBe(core.sessionId);
+    expect(requests).toHaveLength(1);
+  } finally { unsubscribe(); await start; }
 }, 20_000);

@@ -10,3 +10,5 @@ Root Registry 仍独占代理身份和邮箱状态。本模块只把持久化会
 
 - 正式 operation 来自执行器元数据或经 Store 交叉校验的 Root 图，只参与工具展示与生命周期补全；不从任意 wire 后缀推断 MCP 身份。
 - 原生 spawn 的工具完成是接纳 ACK，不能直接合成代理成功。恢复事件保持独立 ID；图中未完成执行投影为 lost，当前进程的正式生命周期事件优先。
+
+Cold materialization also receives the full validated tree projection before pagination. Ancestor lifecycle rows are reconstructed before the current-process event tail; each row carries its actual parentSessionId. Store seed remains membership validation only, so ordinary events derive the same directory from rows without retaining a second manifest cache.

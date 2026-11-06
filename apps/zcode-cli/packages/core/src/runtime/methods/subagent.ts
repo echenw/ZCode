@@ -1,6 +1,6 @@
 import { isTerminalRuntimeTask } from "../../runtime-task/registry.js";
 import { createMultiAgentControl, snapshotMultiAgentForkHistory, multiAgentRootId, assertMultiAgentCapacity, createMultiAgentPersistence } from "../../multi-agent/index.js";
-import { createModelId, createModelProviderId } from "@zcode/contracts";
+import { createModelId, createModelProviderId, SessionEventType } from "@zcode/contracts";
 /* eslint-disable max-lines -- subagent runtime wiring 集中衔接 child runtime、tool pool、权限、MCP 与 activity watchdog，拆分需单独迁移。 */
 import {
   RESPOND_TO_COORDINATOR_TOOL_NAME,
@@ -66,6 +66,7 @@ import { computeOfficialCuaServerNames } from "./mcp.js";
 import { persistRuntimeModelSelection, sameModelSelection } from "./turn-model.js";
 import { getOffPeakExecution, markTemporaryRuntimeSelection } from "../off-peak/runtime.js";
 import { getOffPeakModelBinding } from "../off-peak/model-binding.js";
+import { projectIdFromDirectory } from "../helpers/project.js";
 
 export async function controlSubagent(
   this: AgentRuntimeInternal,
@@ -123,6 +124,17 @@ export function createDefaultSubagentPort(
       });
     },
     runExploreAgent: async (request, options) => {
+      const runGeneration = request.multiAgent ? this.multiAgentRegistry?.get(request.agentId)?.multiAgent?.runGeneration : undefined;
+      const assertSetupActive = () => {
+        if (!request.multiAgent) return;
+        const task = this.multiAgentRegistry?.get(request.agentId);
+        // 恢复读取和 Session 创建不可同步取消；每个副作用边界都重新核对原代次与 Stop。
+        if (options?.signal?.aborted || !task || isTerminalRuntimeTask(task) || task.multiAgent?.runGeneration !== runGeneration) {
+          throw createCoreError(CoreErrorType.ToolCancelled, "Agent setup was interrupted or superseded", {
+            context: { agentId: request.agentId }, recoverable: true,
+          });
+        }
+      };
       const offPeak = getOffPeakExecution(this);
       const childBinding = offPeak?.createChildBinding();
       if (offPeak && !offPeak.lifecycle.terminal) {
@@ -140,6 +152,7 @@ export function createDefaultSubagentPort(
           };
       }
       try {
+        assertSetupActive();
         request.reportActivity?.();
         const builtInExplore = isBuiltInExploreAgentProfile(request.profile);
         const parentSessionId = request.parentSessionId ?? this.sessionId;
@@ -216,6 +229,7 @@ export function createDefaultSubagentPort(
           traceContext: request.traceContext,
           workspaceRoot: request.workspaceRoot,
         });
+        assertSetupActive();
         // 空 agent prompt 不是一个语义段；先硬拼 `\n\n` 会把缺失段的边界
         // 泄漏到 persistent Memory 开头。这里只组合非空正文，block 左边界由 builder 统一添加。
         const agentPrompt = [baseAgentPrompt, persistentMemory?.prompt]
@@ -236,11 +250,13 @@ export function createDefaultSubagentPort(
           this.config.pluginReferenceCatalog,
         );
         await validateSubagentComputerUseConfiguration(request, preflightCuaPolicy, this.skillPort);
+        assertSetupActive();
         const childMcpAccess = await resolveSubagentMcpAccess.call(
           this,
           request,
           officialCuaServerNames,
         );
+        assertSetupActive();
         const resolvedChildToolAllowlist = resolveSubagentToolAllowlist.call(
           this,
           request,
@@ -265,6 +281,7 @@ export function createDefaultSubagentPort(
           this.config.pluginReferenceCatalog,
         );
         await validateSubagentComputerUseConfiguration(request, childCuaPolicy, this.skillPort);
+        assertSetupActive();
         const childSkillPort = resolveSubagentSkillPort(
           this.skillPort,
           request.profile.skills,
@@ -452,6 +469,12 @@ export function createDefaultSubagentPort(
             appVersion: this.appVersion,
             eventSink: {
               onSessionEvent: async (event) => {
+                if (request.multiAgent && event.type === SessionEventType.TurnStarted) {
+                  // TurnStarted 先于 user transcript 落库；先持久化保守事实，空历史不能冒充新首轮。
+                  assertSetupActive();
+                  this.multiAgentRegistry?.update(request.agentId, (task) => ({ ...task, hasStartedTurn: true }));
+                  await this.multiAgentPersistence?.flush();
+                }
                 request.reportActivity?.();
                 // child runtime 的事件已经按 childSessionId 落库，但旧链路只把
                 // 少量工具事件镜像给 parent sink，导致 UI 订阅 child topic 后只能拿到打开时
@@ -489,7 +512,7 @@ export function createDefaultSubagentPort(
         );
 
         const childInternal = childRuntime as unknown as AgentRuntimeInternal;
-        const resumesExistingChild = request.resumeFromStore === true;
+        let resumesExistingChild = request.resumeFromStore === true;
         const launchExecutionCeiling = request.multiAgent ? {
           mode: childRuntime.getMode(), planEnabled: childRuntime.getPlanEnabled(),
         } : undefined;
@@ -499,48 +522,64 @@ export function createDefaultSubagentPort(
             offPeak?.ordinarySelection,
           );
         let previousSelection: ModelSelection | undefined;
+        let persistedMessages: import("@zcode/contracts").MessageWithParts[] | undefined;
         if (resumesExistingChild) {
-          const persistedMessages = await this.sessionStore?.messages({
+          persistedMessages = await this.sessionStore?.messages({
             sessionID: request.sessionId,
           });
-          // terminal resume 只恢复已有历史；模型初始化前失败不能变成一次空 session 创建。
+          assertSetupActive();
+          // Registry 明确证明首轮从未开始，才可按原 ID 完成首次初始化；不存在的历史不能被猜成新任务。
           if (!persistedMessages?.length) {
-            throw createCoreError(
-              CoreErrorType.SessionNotFound,
-              `No transcript found for agent ${request.agentId}`,
-              { recoverable: true },
-            );
+            const session = await this.sessionStore?.getSession(request.sessionId);
+            assertSetupActive();
+            const task = this.multiAgentRegistry?.get(request.agentId);
+            if (!request.multiAgent || task?.hasStartedTurn !== false
+              || task.childSessionId !== request.sessionId || task.parentSessionId !== parentSessionId
+              || (session && (session.time.deleted !== undefined || session.id !== request.sessionId || session.parentID !== parentSessionId
+                || session.projectID !== projectIdFromDirectory(request.workingDirectory) || session.directory !== request.workingDirectory))) {
+              throw createCoreError(CoreErrorType.SessionNotFound, `No transcript found for agent ${request.agentId}`, { recoverable: true });
+            }
+            // 暂停可能先于原 Session 落库；仍使用原 Runtime 的持久化/继承路径，不能另造身份或跳过 fork 前缀。
+            resumesExistingChild = false;
           }
+        }
+        if (resumesExistingChild) {
           const entries = await this.sessionStore?.sessionEntries?.({
             sessionID: request.sessionId,
             type: SESSION_ENTRY_MODEL_SELECTION,
           });
+          assertSetupActive();
           previousSelection = parseModelSelectionValue(entries?.at(-1)?.data);
           await childRuntime.resumeFromStore({
             persistedMessages,
             traceContext: request.traceContext,
           });
+          assertSetupActive();
           if (launchExecutionCeiling) {
             // 冷恢复会载入旧权限双轴；必须在恢复后再交集，避免旧 yolo 撤销本次父级 Plan/权限上限。
             await childRuntime.setExecutionState({
               mode: restrictMultiAgentPermissionMode(launchExecutionCeiling.mode, childRuntime.getMode()),
               planEnabled: launchExecutionCeiling.planEnabled || childRuntime.getPlanEnabled(),
             }, request.traceContext);
+            assertSetupActive();
           }
           // 恢复只导入历史；本轮 profile 选出的模型仍是执行权威，并更新冷恢复所用的选择记录。
           await persistRuntimeModelSelection(
             childRuntime as unknown as AgentRuntimeInternal,
             childSelection,
           );
+          assertSetupActive();
         } else {
           // 父会话过去先发布 SubagentSpawned，child 的首轮 executeTurn 才落库。
           // 并发派生时目录查询会在两者之间读到少一个 child。这里把持久化提升为发布前闸门。
           await childRuntime.ensureSessionPersistedForExternalActivity(request.prompt, {
             traceContext: request.traceContext,
           });
+          assertSetupActive();
         }
         if (request.forkHistory?.length && !resumesExistingChild) {
           await childInternal.ensureContextInitialized(request.traceContext, childModel);
+          assertSetupActive();
           const preserveSystemPrefix = this.config.multiAgentV2?.preserveForkPrefix !== false;
           const inheritedEntries = request.forkHistory.map((message) => ({ message,
             metadata: { source: "shared_context" as const, inheritedMultiAgentContext: preserveSystemPrefix } }));
@@ -552,8 +591,10 @@ export function createDefaultSubagentPort(
           await deps.sessionStore?.saveSessionEntry?.({ id: `multi_agent_fork:${request.agentId}`, sessionID: request.sessionId,
             type: "multi_agent/fork_history", time: { created: Date.now(), updated: Date.now() },
             data: { version: 1, preserveSystemPrefix, messages: request.forkHistory } });
+          assertSetupActive();
         } else if (resumesExistingChild && request.multiAgent?.forkTurns === "all") {
           const forkEntries = await deps.sessionStore?.sessionEntries?.({ sessionID: request.sessionId, type: "multi_agent/fork_history" });
+          assertSetupActive();
           const saved = forkEntries?.at(-1)?.data as { version?: number; preserveSystemPrefix?: boolean; messages?: import("@zcode/contracts").ModelInputMessage[] } | undefined;
           const entries = childInternal.messageHistory.toRuntimeEntries();
           // Compact already carries inherited facts in its summary; re-inserting the original fork would undo compaction.
@@ -573,6 +614,7 @@ export function createDefaultSubagentPort(
           }
         }
         await notifySessionReady();
+        assertSetupActive();
         if (
           !resumesExistingChild ||
           (previousSelection && !sameModelSelection(previousSelection, childSelection))
@@ -594,6 +636,7 @@ export function createDefaultSubagentPort(
             previousModelSelection: previousSelection ?? null,
             traceContext: request.traceContext,
           });
+          assertSetupActive();
         }
         request.registerMessageSink?.(createSubagentMessageSink(childRuntime, { ...request, retainsUntilConsumed: Boolean(request.multiAgent) }));
         try {

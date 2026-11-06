@@ -107,6 +107,7 @@ export function createMultiAgentControl(options: CreateMultiAgentControlOptions)
         if (treeTasks(registry, identity.rootSessionId).some((task) => task.multiAgent?.agentPath === taskPath)) failure("multi_agent_duplicate_task", `Task path already exists: ${taskPath}`);
         assertMultiAgentCapacity(registry, identity, config);
         const agentId = `agent_${crypto.randomUUID()}`;
+        const runGeneration = 1;
         const childSessionId = createSessionId(`subagent_${agentId}`);
         const request: SubagentRunRequest = {
           sessionId: context.sessionId, turnId: context.turnId, parentToolCallId: context.parentToolCallId,
@@ -121,13 +122,14 @@ export function createMultiAgentControl(options: CreateMultiAgentControlOptions)
         registry.register({ taskId: agentId, agentId, agentType: request.agentType, description: args.task_name,
           status: "running", startedAt: new Date(), type: "local_agent", childSessionId,
           parentSessionId: context.sessionId, parentToolCallId: context.parentToolCallId,
-          multiAgent: { ...request.multiAgent!, resident: true, runGeneration: 1 }, pendingMessages: [] });
+          multiAgent: { ...request.multiAgent!, resident: true, runGeneration }, pendingMessages: [] });
         try {
           await runner.start(request, { ...runOptions, signal: undefined });
           return { task_name: taskPath, ...(config.hideSpawnAgentMetadata === false ? { nickname: registry.get(agentId)?.multiAgent?.nickname ?? null } : {}) };
         } catch (error) {
           const current = registry.get(agentId);
-          if (current && !isTerminalRuntimeTask(current)) registry.remove(agentId);
+          // spawn 只拥有首次代次的预留；旧 setup 失败不能删除已 Stop 或已续接的同一身份。
+          if (current && !isTerminalRuntimeTask(current) && current.multiAgent?.runGeneration === runGeneration) registry.remove(agentId);
           throw error;
         }
       }

@@ -1781,24 +1781,19 @@ export async function resolveConversationBackingRecord(context: ZCodeProtocolAge
   return undefined;
 }
 
-export async function listSessionSubagents(
+/** 同一经过分支和父链校验的全树投影；分页只属于列表出口，冷恢复不能丢掉被分页的生命周期。 */
+export async function readSessionSubagentTree(
   context: ZCodeProtocolAgentServerContext,
-  rawParams: unknown,
+  sessionId: string,
   persistedMessages?: MessageWithParts[],
-) {
-  const params = parseParams(zcodeSessionSubagentsParamsSchema, rawParams ?? {});
+): Promise<Awaited<ReturnType<typeof readSubagentTree>>> {
   const store = context.deps.sessionStore;
-  const liveParent = context.sessions.get(params.sessionId);
+  const liveParent = context.sessions.get(sessionId);
   if (!store) {
-    return {
-      revision: liveParent?.stateRevision ?? 0,
-      childSessionIds: [],
-      running: [],
-      ended: { total: 0, items: [] },
-    };
+    return { projection: { revision: liveParent?.stateRevision ?? 0, running: [], ended: [] }, childSessionIds: [] };
   }
 
-  const parentSession = await store.getSession(params.sessionId as SessionId);
+  const parentSession = await store.getSession(sessionId as SessionId);
   if (!parentSession) {
     // 诊断：hydrate 会复用子任务种子读取；若 task index/旧 ACP task 残留了无效 ID，
     // 这里会把“持久化记录不存在”包装成 v4.hydrate，必须记录调用阶段而不是只看错误文本。
@@ -1808,11 +1803,11 @@ export async function listSessionSubagents(
       event: "zcode_protocol.session.persisted_missing",
       module: "bootstrap.zcode_protocol",
       operation: "session_subagents",
-      sessionId: params.sessionId,
+      sessionId: sessionId,
     });
     throw new ProtocolRequestError(
       zcodeProtocolErrorCodes.sessionUnavailable,
-      `Session not found: ${params.sessionId}`,
+      `Session not found: ${sessionId}`,
     );
   }
   const { projection, childSessionIds } = await readSubagentTree({
@@ -1829,6 +1824,16 @@ export async function listSessionSubagents(
       return live ? live.app.runtime.getProjection().catch(() => undefined) : undefined;
     },
   });
+  return { projection, childSessionIds };
+}
+
+export async function listSessionSubagents(
+  context: ZCodeProtocolAgentServerContext,
+  rawParams: unknown,
+  persistedMessages?: MessageWithParts[],
+) {
+  const params = parseParams(zcodeSessionSubagentsParamsSchema, rawParams ?? {});
+  const { projection, childSessionIds } = await readSessionSubagentTree(context, params.sessionId, persistedMessages);
   const ended = paginateEndedSubagents(projection.ended, {
     cursor: params.endedCursor,
     limit: params.endedLimit,

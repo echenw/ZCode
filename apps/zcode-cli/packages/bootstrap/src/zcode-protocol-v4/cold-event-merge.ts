@@ -1,4 +1,4 @@
-import { hydrateAgentCommunicationEvents, hydrateRegisteredAgentEvents, withAgentRecipientNames } from "./agent-communication/index.js";
+import { hydrateAgentCommunicationEvents, hydrateRegisteredAgentEvents, hydrateSubagentTreeEvents, withAgentRecipientNames, type AgentTreeLifecycleProjection } from "./agent-communication/index.js";
 import {
   SessionEventType,
   type MessageWithParts,
@@ -32,6 +32,7 @@ export interface ColdEventMergeResult {
 
 interface MergeInput {
   agentNames?: Record<string, string>;
+  subagentTree?: AgentTreeLifecycleProjection;
   contextWindow?: number;
   fileChangeSummariesByMessageId?: ReadonlyMap<string, TurnFileChangeSummary>;
   goalVerificationEntries?: readonly HydratedGoalVerificationEntry[];
@@ -638,12 +639,12 @@ export function mergeColdConversationEvents(input: MergeInput): ColdEventMergeRe
     (entry) => !entry.payload.anchorTurnId || !authorityTurnIds.has(entry.payload.anchorTurnId),
   );
   const namedMessages = withAgentRecipientNames(durableMessages, input.agentNames);
-  const transcriptEvents = hydrateRegisteredAgentEvents(synthesizeEventsFromMessages(namedMessages, {
+  const transcriptEvents = [...hydrateRegisteredAgentEvents(synthesizeEventsFromMessages(namedMessages, {
     sessionId: input.sessionId,
     contextWindow: input.contextWindow,
     fileChangeSummariesByMessageId: input.fileChangeSummariesByMessageId,
     goalVerificationEntries: durableGoalEntries,
-  }), namedMessages);
+  }), namedMessages), ...hydrateSubagentTreeEvents(input.sessionId, input.subagentTree, input.agentNames)];
   const durableEvents = input.target
     ? [
         ...transcriptEvents.slice(0, 1),

@@ -2,7 +2,7 @@
 
 ## 当前复审结论（2026-10-28）
 
-本轮按用户明确授权，先修复已证实问题、清理确定废弃项，再撤销原 7 个本地提交并按类别重提；不 push。
+上一轮按用户明确授权，先修复已证实问题、清理确定废弃项，再撤销原 7 个本地提交并按类别重提；不 push。
 以 `3c5b227649371507ddc4eb46ac5133afe6db1cab` 为原始基线，原分支提交与未提交文件已分别由
 `backup/multi-agent-v2-before-regroup-20261028-085811`、Git bundle、完整二进制 diff 和文件归档保留。
 新提交按路径测试、流恢复、V2 Runtime/Host/TUI、可选讨论板、UI、桌面回归、文档划分；
@@ -10,7 +10,22 @@
 
 **代码复审问题已修复；总体交付继续为 PARTIAL。** 原 Codex B0、跨 Provider 和真实模型自主行为
 不因本轮本地回放而关闭。本轮没有外部模型调用；桌面交互仅在用户指定的 Docker 虚拟桌面进行。
-E15–E43 是当时的历史证据，以下 E44 为本轮复核，不能相互替代。
+E15–E43 是当时的历史证据；E44 记录七类提交当时的复核，E45 记录随后继续审查的四项修复，不能相互替代。
+
+### E45：继续复审发现的四项生命周期与递归展示修复
+
+对象为 `feat/multi-agent-v2-main@033afd31` 之后的集成工作树。本轮修复获用户明确授权；没有新增提交或 push。
+
+- Runner 的 sink 注册、初始化失败清理与异步准备后的发布均验证原 generation 与非终态；Stop/新代次优先。旧准备流程不能覆盖新 sink、删除保留身份或迟发 Spawn。
+- 首轮开始前停止仍保留原身份。Registry 用单调 `hasStartedTurn` 保存“是否开始过首轮”的事实并投影到原图；仅明确 false 可用原 childSessionId 完成首次初始化。已有 Session 校验项目、父链、目录和未删除状态；true 或旧图未知时空历史继续报错，不做损坏历史 fallback。JSON 冷恢复与单调性另有回归。
+- Host 从同一经过有效分支、项目、实际父链校验的全树查询恢复全部后代 lifecycle 行，在本进程事件之前合并；不经 ended 分页丢失后代，也不保留第二份 manifest。无 backing record 的冷打开走同一事实与资格 seed。child outcome/model 读取也使用该 child 的有效分支。
+- Root 全树 manifest 回收同工作区、同 Root 下所有失效后代标签；子级局部同步仍限定直接父级。切换时正确回落同作用域目录，保留其他 Root、远程工作区、兄弟与有效后代。
+
+本轮实际验证：Core 3 文件 **43 PASS**；原前后台/边界/guard/通知路径 5 文件 **86 PASS**；Host 6 文件 **66 PASS**；UI 3 文件 **133 PASS**；Contracts 43 文件 **336 PASS**。Root typecheck exit 0，新增桌面脚本另经 E2E typecheck；最终 CLI 容器 typecheck **32/32 PASS**，Core/Bootstrap 类型检查与 Core build 另经最终复核。Root lint 0 error / 96 warnings，CLI lint 0 error / 70 warnings及 11 项原样上游行数诊断；变更架构 0 违规。没有重跑全仓测试，不用本轮局部通过覆盖 E44 的基线/环境失败与整体 PARTIAL。
+
+桌面最终容器回放 **1/1 PASS / 0 FAIL / 0 skipped，exit 0**，无自动重试；用例 `65,771ms`，含构建准备共 `173,455ms`。31 条本地 fixture 请求全部 complete/200，`externalLlmVerified=false`。沿用四层树、Main Stop 隔离、原身份多次续接和真实进程冷重开；新增普通请求后仍保留三层后代目录、从真实目录打开孙/曾孙顶层标签、行内编辑 Root 派发输入后移除两标签并回落同 Root 空目录的实际交互。复看最终目录与回退截图。运行于 Docker/Xvfb、network none，未操作 Mac 桌面。用例入口与末尾断言曾命中收起的工具行/forceMount 隐藏页，现限定正式侧栏入口和当前激活面板，并等待异步目录刷新；原有断言保留。最终 runId `four-fixes-scope-20261028`；原始结果在 `/tmp/zcode-four-fixes-build-context.txt` 指向目录下，最终桌面产物为 `desktop-scope-artifacts/`。失败尝试分别保留，不以失败退出码冒充通过。
+
+无界面检查在 Mac Node `24.18.0` / pnpm `10.33.2` 执行；CLI 全包类型检查及桌面使用容器 Node `24.14.0`。Mac 的 CLI 全包 typecheck 入口缺少 turbo，改用完整容器依赖；容器 lint 的 Git 索引检查因镜像不含 .git 未进入检查，改用原工作树正式 CLI lint 成功。所有模型响应为本地 fixture，无外部模型调用。原 11 个未跟踪运行产物哈希不变，原 main 保持干净；不涉及发布，无需新增发布记录。
 
 ### E44：源码复审、废弃清理与分类提交
 

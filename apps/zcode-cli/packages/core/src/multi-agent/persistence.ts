@@ -71,7 +71,7 @@ export function serializeMultiAgentGraph(registry: RuntimeTaskRegistry, rootSess
       ...(task.completedAt ? { completedAt: task.completedAt.toISOString() } : {}),
       childSessionId: task.childSessionId, parentSessionId: task.parentSessionId, parentToolCallId: task.parentToolCallId,
       outputFile: task.outputFile, prompt: task.prompt, error: task.error, isBackgrounded: task.isBackgrounded,
-      branchGeneration: task.branchGeneration, multiAgent: task.multiAgent,
+      branchGeneration: task.branchGeneration, hasStartedTurn: task.hasStartedTurn, multiAgent: task.multiAgent,
       pendingMessages: (task.pendingMessages ?? []).map((message) => ({ id: message.id, message: message.message, queuedAt: message.queuedAt.toISOString(),
         origin: message.origin,
         senderPath: message.senderPath, targetPath: message.targetPath, messageType: message.messageType,

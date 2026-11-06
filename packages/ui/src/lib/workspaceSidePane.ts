@@ -543,6 +543,7 @@ export interface OpenScopedSubagentDirectorySideTabRequest extends OpenSubagentD
 }
 
 export interface SyncSubagentSessionTabsRequest {
+  workspaceKey: string;
   rootSessionId: string;
   parentSessionId: string;
   validChildSessionIds: readonly string[];
@@ -1907,11 +1908,15 @@ export function syncSubagentSessionSidePaneTabs(
 ): WorkspaceSidePaneState | null {
   if (!current) return null;
   const validChildSessionIds = new Set(options.validChildSessionIds);
+  // Root 的 manifest 已包含全部后代；仍按直接 parent 过滤会漏掉旧分支的孙/曾孙标签。
+  // 子级投影只清理自己的直接子标签，不能把局部 manifest 当成 Root 全树事实。
+  const syncsRootTree = options.parentSessionId === options.rootSessionId;
   const removedTabs = current.tabs.filter(
     (tab) =>
       tab.type === "subagent-session" &&
+      tab.workspaceKey === options.workspaceKey &&
       tab.rootSessionId === options.rootSessionId &&
-      tab.parentSessionId === options.parentSessionId &&
+      (syncsRootTree || tab.parentSessionId === options.parentSessionId) &&
       !validChildSessionIds.has(tab.childSessionId),
   );
   if (removedTabs.length === 0) return current;
@@ -1919,9 +1924,15 @@ export function syncSubagentSessionSidePaneTabs(
   const tabs = current.tabs.filter((tab) => !removedIds.has(tab.id));
   if (tabs.length === 0) return null;
   if (!removedIds.has(current.activeTabId)) return { ...current, tabs };
-  const directory = tabs.find(
-    (tab) => tab.type === "subagent-directory" && tab.rootSessionId === options.rootSessionId,
+  const directories = tabs.filter(
+    (tab): tab is SubagentDirectorySidePaneTab =>
+      tab.type === "subagent-directory" &&
+      tab.workspaceKey === options.workspaceKey &&
+      tab.rootSessionId === options.rootSessionId,
   );
+  const directory =
+    directories.find((tab) => tab.parentSessionId === options.parentSessionId) ??
+    directories.find((tab) => tab.parentSessionId === options.rootSessionId);
   if (directory) return { tabs, activeTabId: directory.id };
   const removedIndex = current.tabs.findIndex((tab) => tab.id === current.activeTabId);
   const previous = tabs[Math.max(0, Math.min(removedIndex - 1, tabs.length - 1))];

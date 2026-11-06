@@ -222,8 +222,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         // 启动元数据写入失败时，child runtime 还没有开始执行；
         // 保留 running task 会让父 runtime 误以为仍有后台任务并持续 defer。
         taskAbort.dispose();
-        const current = registry.get(lifecycle.agentId);
-        if (current && !isTerminalRuntimeTask(current)) registry.remove(lifecycle.agentId);
+        releaseFailedSubagentSetup(registry, lifecycle);
         throw error;
       }
 
@@ -303,7 +302,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         taskAbort.abort(error);
         taskAbort.dispose();
         borrowedForegroundAgentIds.delete(lifecycle.agentId);
-        registry.remove(lifecycle.agentId);
+        releaseFailedSubagentSetup(registry, lifecycle);
         throw error;
       }
 
@@ -511,8 +510,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
       } catch (error) {
         // A concurrent Stop retains its terminal identity; other setup failures release the reservation.
         taskAbort.dispose();
-        const current = registry.get(lifecycle.agentId);
-        if (current && !isTerminalRuntimeTask(current)) registry.remove(lifecycle.agentId);
+        releaseFailedSubagentSetup(registry, lifecycle);
         throw error;
       }
       if (taskAbort.signal.aborted) { taskAbort.dispose(); return output; }
@@ -564,7 +562,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): 
         await readyGate.promise;
       } catch (error) {
         taskAbort.abort(error);
-        registry.remove(lifecycle.agentId);
+        releaseFailedSubagentSetup(registry, lifecycle);
         throw error;
       }
 
@@ -1103,6 +1101,7 @@ async function resumeTerminalAgentInBackground(
     ...(task.multiAgent ? { multiAgent: { ...task.multiAgent, resident: true, runGeneration: task.multiAgent.runGeneration + 1,
       initiatingAgentPath: resumeRequest.multiAgent?.initiatingAgentPath, initiatingTurnId: resumeRequest.multiAgent?.initiatingTurnId } } : {}),
     pendingMessages: task.pendingMessages ?? [],
+    hasStartedTurn: task.hasStartedTurn,
     control: task.control,
     notified: false,
     completedAt: undefined,
@@ -1247,6 +1246,7 @@ async function runAgentToCompletion(
   let sessionReady = false;
   const notifySessionReady = async () => {
     if (sessionReady) return;
+    assertCurrentSubagentSetup(registry, lifecycle, request);
     await executionOptions.onSessionReady?.();
     sessionReady = true;
   };
@@ -1535,13 +1535,33 @@ function createMessageSinkRegistration(
   registry: RuntimeTaskRegistry,
 ): (sink: RuntimeTaskMessageSink) => void {
   return (sink) => {
-    registry.update(lifecycle.agentId, (task) => ({
-      ...task,
-      messageSink: sink,
-    }));
+    let registered = false;
+    registry.update(lifecycle.agentId, (task) => {
+      // Stop 后旧恢复 I/O 仍可能返回；只能由当前非终态代次安装接收器，不能覆盖新轮邮箱。
+      if (task.multiAgent && (isTerminalRuntimeTask(task) || task.multiAgent.runGeneration !== lifecycle.runGeneration)) return task;
+      registered = true;
+      return { ...task, messageSink: sink };
+    });
     // V2 邮箱在真实 active turn 的首个模型边界消费；注册时重试会错过短 turn，或在消费后重复送达。
-    if (!sink.retainsUntilConsumed) void flushPendingMessages(options, lifecycle, registry, sink);
+    if (registered && !sink.retainsUntilConsumed) void flushPendingMessages(options, lifecycle, registry, sink);
   };
+}
+
+function assertCurrentSubagentSetup(registry: RuntimeTaskRegistry, lifecycle: SubagentLifecycle, request: SubagentRunRequest): void {
+  if (!request.multiAgent) return;
+  const current = registry.get(lifecycle.agentId);
+  if (!current || isTerminalRuntimeTask(current) || current.multiAgent?.runGeneration !== lifecycle.runGeneration) {
+    throw createCoreError(CoreErrorType.ToolCancelled, "Agent setup was interrupted or superseded", {
+      context: { agentId: lifecycle.agentId }, recoverable: true,
+    });
+  }
+}
+
+function releaseFailedSubagentSetup(registry: RuntimeTaskRegistry, lifecycle: SubagentLifecycle): void {
+  const current = registry.get(lifecycle.agentId);
+  // 初始化失败仅释放自己尚未结束的预留；显式 Stop 的身份及后续代次仍由原 Registry 保留。
+  if (current?.multiAgent && (isTerminalRuntimeTask(current) || current.multiAgent.runGeneration !== lifecycle.runGeneration)) return;
+  registry.remove(lifecycle.agentId);
 }
 
 async function flushPendingMessages(
@@ -1581,7 +1601,8 @@ function createRuntimeTaskSnapshot(input: {
   status: RuntimeTaskSnapshot["status"];
 }): RuntimeTaskSnapshot {
   return {
-    ...(input.request.multiAgent ? { multiAgent: { ...input.request.multiAgent, resident: true, runGeneration: input.lifecycle.runGeneration } } : {}),
+    ...(input.request.multiAgent ? { hasStartedTurn: false,
+      multiAgent: { ...input.request.multiAgent, resident: true, runGeneration: input.lifecycle.runGeneration } } : {}),
     taskId: input.lifecycle.agentId,
     agentId: input.lifecycle.agentId,
     agentType: input.request.agentType,

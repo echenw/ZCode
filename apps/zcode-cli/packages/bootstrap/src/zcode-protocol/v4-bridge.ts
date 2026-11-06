@@ -109,7 +109,7 @@ import {
   discardFailedSessionResume,
   createSessionRecordForV4,
   ensureSessionModelAvailableForNextTurn,
-  listSessionSubagents,
+  readSessionSubagentTree,
   registerForkedSession,
   readSessionContextUsage,
   resolveConversationBackingRecord,
@@ -1988,11 +1988,17 @@ export function createConversationV4Gateway(
           memoryEvents: [],
           store,
         });
-        const merged = mergeColdConversationEvents({ ...source, sessionId });
+        const subagents = await readSessionSubagentTree(context, sessionId, persistedMessages);
+        const merged = mergeColdConversationEvents({ ...source, sessionId, subagentTree: subagents.projection });
         return {
           events: merged.events,
           synthesized: true,
           sourceEventSeq: 0,
+          subagentsSeed: {
+            revision: subagents.projection.revision,
+            childSessionIds: subagents.childSessionIds,
+            running: subagents.projection.running,
+          },
           ...(source.sharedContextImport
             ? { sharedContextImport: source.sharedContextImport }
             : {}),
@@ -2079,7 +2085,10 @@ export function createConversationV4Gateway(
         ),
         contextWindow,
       );
+      // 一次读取完整经过资格校验的树；不能用 endedLimit:1 的分页列表恢复生命周期。
+      const subagents = await readSessionSubagentTree(context, sessionId, persistedMessages);
       const merged = mergeColdConversationEvents({
+        subagentTree: subagents.projection,
         contextWindow,
         agentNames: source.agentNames,
         fileChangeSummariesByMessageId,
@@ -2111,11 +2120,7 @@ export function createConversationV4Gateway(
       // transcript 可恢复 Agent row，却不能证明 child session 已经落库。
       // 这里在 gateway 的 raw-event buffer 补回前生成校验种子，既排除旧幽灵引用，
       // 又避免异步查询覆盖 seed 之后新到达的 live spawn/stop。
-      const subagents = await listSessionSubagents(
-        context,
-        { sessionId, endedLimit: 1 },
-        persistedMessages,
-      );
+
       return {
         events: merged.events,
         // 与合成事件共用本次查询结果；不在后续回填阶段重新读取另一份容量。
@@ -2124,9 +2129,9 @@ export function createConversationV4Gateway(
         // transcript 重物化，需替换 ingest 抢先建的 cold publisher。
         synthesized: merged.usedDurableTranscript,
         subagentsSeed: {
-          revision: subagents.revision,
+          revision: subagents.projection.revision,
           childSessionIds: subagents.childSessionIds,
-          running: subagents.running,
+          running: subagents.projection.running,
         },
         ...(source.sharedContextImport ? { sharedContextImport: source.sharedContextImport } : {}),
         sourceEventSeq,

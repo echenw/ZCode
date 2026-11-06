@@ -630,3 +630,5 @@ sequenceDiagram
 When a descendant finishes, its retained control binding is rebound to the root's lazy execution factory using the registry's saved execution snapshot. This allows the finished parent Runtime and its timers to be released without keeping a second live graph or dropping descendants. Root/child/grandchild controls still target the same agent IDs and child sessions.
 
 V2 lifecycle events are persisted to the direct parent session and projected once to each further ancestor, including Root, using the same registry identity. Projection payloads retain the source session/turn and true parent path; each destination uses its own event sequence and does not claim a descendant turn ID as its own turn. Raw child streams continue through existing event sinks. The projections support replay and UI and are never an alternative task registry or a mailbox wakeup.
+
+2026-10-28 追加修复约束：sink 注册、初始化清理和旧准备流程的后续发布均核对原 runGeneration 与非终态；Stop 与新代次优先。Registry 的 `hasStartedTurn` 是单调持久事实；仅明确 false 允许用已分配的原 childSessionId 完成首轮初始化，已有 Session 须通过项目、父链、目录和删除状态校验。true 或旧图未知时空历史仍报错。根冷物化补齐全部有效后代的正式生命周期行；根全树与子级局部标签同步分别保留正确作用范围。

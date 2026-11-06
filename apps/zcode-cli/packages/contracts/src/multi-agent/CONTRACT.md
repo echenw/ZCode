@@ -7,3 +7,5 @@ This module owns no running state and performs no tool execution. Unknown input 
 Legacy Agent/SendMessage/TaskOutput/TaskStop compatibility belongs to the same Core owner, not a second task registry here.
 
 Core's root registry assigns a unique, stable display nickname to each identity. Nicknames are optional in old stored graphs and are populated on restoration; paths and IDs remain the addressing authority. Message display metadata is additive and cannot change mailbox admission, wake-up or cancellation semantics.
+
+Stored task graphs optionally project Core's monotonic hasStartedTurn fact; an absent legacy value is unknown, never proof that missing transcript history is a new first turn.

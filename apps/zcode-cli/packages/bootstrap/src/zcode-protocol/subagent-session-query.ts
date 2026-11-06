@@ -611,7 +611,7 @@ export async function readSubagentTree(input: {
         input.store.messages({ sessionID: child.id }),
         input.readProjection(child.id),
       ]);
-      children.push({ child, childMessages, childProjection });
+      children.push({ child, childMessages: activeBranchMessages(child, childMessages), childProjection });
     }
     const projection = projectSessionSubagents({
       revision: input.revision,

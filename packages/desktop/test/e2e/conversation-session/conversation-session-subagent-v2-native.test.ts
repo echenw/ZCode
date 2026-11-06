@@ -6,12 +6,14 @@ import {
   TID_CHAT_CONTEXT_USAGE_TRIGGER,
   TID_CHAT_SUMMARY_PANEL,
   TID_TASK_ITEM,
+  TID_SIDE_PANE_TOGGLE,
   TID_TOOL_SUMMARY_TRIGGER,
   testId,
 } from "@zcode/shared/test-ids";
 import { clearAppData, getE2EAppDataPaths, seedCliConfig } from "../helpers/desktop-app.js";
 import {
   clickV4Stop,
+  editFirstV4UserQuery,
   getV4PaneSnapshot,
   openV4RunningBackgroundWorks,
   prepareV4ConversationE2E,
@@ -70,6 +72,17 @@ const EXPECTED_FIXTURES = [
   "restored-gate",
   "a-done-4",
 ].map((name) => `v2-native-${name}`);
+
+const REWIND_FIXTURES = [
+  "v2-native-rewind-root-spawn",
+  "v2-native-rewind-root-done",
+  "v2-native-rewind-a-spawn",
+  "v2-native-rewind-a-done",
+  "v2-native-rewind-b-spawn",
+  "v2-native-rewind-b-done",
+  "v2-native-rewind-c-done",
+  "v2-native-rewind-edited",
+];
 
 interface GraphTask {
   taskId: string;
@@ -507,6 +520,14 @@ describe("原生 Desktop V2 树、Main Stop 与冷续接（synthetic Provider）
     await assertChildSessionsHidden(final);
     await assertCaptureComplete();
     await recordPhase("cold-followup-completed-original-identity", final);
+    await openRootDirectory(final);
+    for (const path of CHILD_PATHS) {
+      await $(
+        `button[data-child-session-id="${requiredTask(final, path).childSessionId}"][data-agent-path]`,
+      ).waitForDisplayed({ timeout: 30000 });
+    }
+    await recordPhase("cold-descendants-retained-after-followup", final);
+    await assertRewoundDescendantTabs();
   });
 });
 
@@ -924,16 +945,17 @@ async function assertFixtureRequest(name: string, includedText: string[]) {
   for (const text of includedText) expect(body).toContain(text);
 }
 
-async function assertCaptureComplete() {
+async function assertCaptureComplete(additionalFixtures: readonly string[] = []) {
+  const expectedFixtures = [...EXPECTED_FIXTURES, ...additionalFixtures];
   let requests: UpstreamRequestEvidence[] = [];
   await browser.waitUntil(
     async () => {
       requests = await scenarioRequests();
-      return EXPECTED_FIXTURES.every((id) => requests.some((record) => record.fixtureId === id));
+      return expectedFixtures.every((id) => requests.some((record) => record.fixtureId === id));
     },
     { timeout: 30000, timeoutMsg: "Native V2 缺少完整 upstream 请求证据" },
   );
-  expect(requests.map((record) => record.fixtureId).sort()).toEqual([...EXPECTED_FIXTURES].sort());
+  expect(requests.map((record) => record.fixtureId).sort()).toEqual([...expectedFixtures].sort());
   for (const request of requests) expect(request.statusCode).toBe(200);
   for (const name of ["root-spawn-a", "a-spawn-b", "b-spawn-c", "c-gate"]) {
     const request = requests.find((record) => record.fixtureId === `v2-native-${name}`)!;
@@ -1093,4 +1115,89 @@ async function recordPhase(name: string, graph: AgentGraph, extra: Record<string
     nativeRows: await nativeAgentRows(),
   });
   await browser.saveScreenshot(join(evidenceDirectory, `${name}.png`));
+}
+
+async function openRootDirectory(graph: AgentGraph) {
+  expect((await getV4PaneSnapshot()).sessionId).toBe(graph.rootSessionId);
+  // 已完成 turn 会收起 Agent 工具行；目录入口属于侧栏的新标签菜单，不依赖工作区展开状态。
+  if (!(await $("[data-side-pane-add-tab-trigger]").isDisplayed())) {
+    const toggle = $(`[data-testid="${TID_SIDE_PANE_TOGGLE}"]`);
+    await toggle.waitForClickable({ timeout: 30000 });
+    await toggle.click();
+  }
+  await $("[data-side-pane-add-tab-trigger]").waitForClickable({ timeout: 30000 });
+  await $("[data-side-pane-add-tab-trigger]").click();
+  // TabsContent 使用 forceMount 保留旧新标签页；同名入口必须限定当前激活页，不能选到隐藏副本。
+  const agents = $('[role="tabpanel"][data-state="active"] [data-side-pane-open-tab-item="agents"]');
+  await agents.waitForDisplayed({ timeout: 30000 });
+  await agents.click();
+}
+
+async function assertRewoundDescendantTabs() {
+  // 新任务保持首个派发输入为 latest editable user row，走真实行内编辑而非注入投影。
+  await prepareV4ConversationE2E();
+  await ensureToolCrossProductFullAccessMode();
+  await sendV4Prompt(`${PREFIX}REWIND_ROOT: create the nested tree and finish.`);
+  await waitForV4AssistantMessageContaining(`${PREFIX}REWIND_ROOT_DONE`);
+  const sessionId = (await getV4PaneSnapshot()).sessionId;
+  if (!sessionId || sessionId === "draft") throw new Error("Rewind Root session missing");
+  const graph = await waitForGraph(
+    sessionId,
+    (tree) => CHILD_PATHS.every((path) => taskAt(tree, path)?.status === "completed"),
+    "回退测试的四层代理未完成",
+  );
+  const taskEntry = $(`[data-testid="${testId(TID_TASK_ITEM, sessionId)}"]`);
+  await taskEntry.waitForDisplayed({ timeout: 30000 });
+  await taskEntry.click();
+  await waitForV4Pane((state) => state.sessionId === sessionId && !state.canStop, "回退前没有选中已持久化的 Root");
+  await recordPhase("rewind-root-before-directory", graph);
+  await openRootDirectory(graph);
+  const directoryTab = await $('[data-side-pane-tab-id][data-state="active"]').getAttribute(
+    "data-side-pane-tab-id",
+  );
+  expect(directoryTab).toContain("subagent-directory:");
+  const openedTabs: string[] = [];
+  for (const path of ["/root/a/b", "/root/a/b/c"]) {
+    const row = $(
+      `button[data-child-session-id="${requiredTask(graph, path).childSessionId}"][data-agent-path]`,
+    );
+    await row.waitForDisplayed({ timeout: 30000 });
+    await row.click();
+    await $(
+      `[data-testid="subagent-user-controls"][data-child-session-id="${requiredTask(graph, path).childSessionId}"]`,
+    ).waitForDisplayed({ timeout: 30000 });
+    const tabId = await $('[data-side-pane-tab-id][data-state="active"]').getAttribute(
+      "data-side-pane-tab-id",
+    );
+    if (!tabId) throw new Error("后代详情标签 ID 缺失");
+    expect(tabId).toContain("subagent-session:");
+    openedTabs.push(tabId);
+    await $(`[data-side-pane-tab-id="${directoryTab}"]`).click();
+  }
+  // 保持曾孙标签激活，回退后既要移除两标签，也要按原 Owner 回落到同 Root 目录。
+  await $(`[data-side-pane-tab-id="${openedTabs[1]}"]`).click();
+  await editFirstV4UserQuery(`${PREFIX}REPLACEMENT: finish directly without delegation.`);
+  await waitForV4AssistantMessageContaining(`${PREFIX}REPLACEMENT_DONE`);
+  await browser.waitUntil(
+    async () =>
+      (
+        await Promise.all(openedTabs.map((id) => $(`[data-side-pane-tab-id="${id}"]`).isExisting()))
+      ).every((exists) => !exists),
+    { timeout: 30000, timeoutMsg: "Root 回退后仍残留孙/曾孙标签" },
+  );
+  expect(
+    await $('[data-side-pane-tab-id][data-state="active"]').getAttribute("data-side-pane-tab-id"),
+  ).toBe(directoryTab);
+  const directoryPanelId = await $(`[data-side-pane-tab-id="${directoryTab}"]`).getAttribute("aria-controls");
+  if (!directoryPanelId) throw new Error("当前 Root 目录缺少对应面板");
+  // 旧标签页保持挂载，目录列表也经异步查询刷新；只检查当前 Root 的可见目录。
+  await browser.waitUntil(async () => browser.execute((id) => {
+    const panel = document.getElementById(id);
+    return panel?.dataset.state === "active" && panel.querySelectorAll('button[data-child-session-id][data-agent-path]').length === 0;
+  }, directoryPanelId), { timeout: 30000, timeoutMsg: "回退后当前 Root 目录仍包含失效后代" });
+  await assertCaptureComplete(REWIND_FIXTURES);
+  await recordPhase("rewind-removes-descendant-tabs", graph, {
+    rewindRootSessionId: sessionId,
+    removedTabIds: openedTabs,
+  });
 }

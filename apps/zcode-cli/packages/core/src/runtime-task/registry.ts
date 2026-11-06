@@ -55,6 +55,8 @@ export interface RuntimeTaskMessageSink {
 }
 
 export interface RuntimeTaskSnapshot extends SubagentTaskSnapshot {
+  /** V2 身份是否已发布首个 TurnStarted；旧图缺省表示未知，不能据空历史启动首轮。 */
+  hasStartedTurn?: boolean;
   multiAgent?: MultiAgentIdentity & {
     resident: boolean;
     runGeneration: number;
@@ -171,6 +173,7 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
   private readonly terminalWaiters = new Map<string, Set<RuntimeTaskWaiter>>();
 
   register(task: RuntimeTaskSnapshot): void {
+    if (this.tasks.get(task.taskId)?.hasStartedTurn === true) task = { ...task, hasStartedTurn: true };
     task = this.withNickname(task);
     const stamped = {
       ...task,
@@ -196,6 +199,7 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
     const current = this.tasks.get(id);
     if (!current) return undefined;
     const next = this.withNickname(patcher(current));
+    if (current.hasStartedTurn === true) next.hasStartedTurn = true;
     if (
       next.multiAgent &&
       next.multiAgent.agentPath !== "/root" &&

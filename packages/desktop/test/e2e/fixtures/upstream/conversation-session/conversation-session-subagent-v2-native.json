@@ -16,9 +16,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_C_UI_RESUME"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_C_UI_RESUME"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -54,13 +52,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_ROOT_START"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["E2E_V2_NATIVE_ROOT_START"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -91,13 +84,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_root_spawn_a"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_root_spawn_a"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -128,9 +116,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_A_START"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_A_START"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -166,13 +152,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_a_spawn_b"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_a_spawn_b"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -203,13 +184,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_a_gate"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_a_gate"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -234,9 +210,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_B_START"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_B_START"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -272,13 +246,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_b_spawn_c"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_b_spawn_c"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -309,13 +278,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_b_gate"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_b_gate"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -340,9 +304,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_C_START"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_C_START"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -378,13 +340,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_c_gate"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_c_gate"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -409,13 +366,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_WARM_PARENT"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["E2E_V2_NATIVE_WARM_PARENT"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -444,13 +396,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_root_warm"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_root_warm"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -475,9 +422,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_A_TASK_2"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_A_TASK_2"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -507,13 +452,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_COLD_PARENT"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["E2E_V2_NATIVE_COLD_PARENT"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -542,13 +482,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_root_cold"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_root_cold"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -573,9 +508,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_A_COLD_HOLD"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_A_COLD_HOLD"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -611,13 +544,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_QUEUE_PARENT"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["E2E_V2_NATIVE_QUEUE_PARENT"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -646,13 +574,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_root_queue"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_root_queue"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -677,13 +600,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_RESTORED_PARENT"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["E2E_V2_NATIVE_RESTORED_PARENT"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -712,13 +630,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_root_restored"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_root_restored"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -743,9 +656,7 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "E2E_V2_NATIVE_A_TASK_4"
-        ],
+        "bodyIncludes": ["E2E_V2_NATIVE_A_TASK_4"],
         "bodyExcludes": [
           "Generate a concise title",
           "CRITICAL: Respond with TEXT ONLY",
@@ -781,13 +692,8 @@
       "match": {
         "method": "POST",
         "pathIncludes": "/messages",
-        "bodyIncludes": [
-          "toolu_v2_native_a_restored_gate"
-        ],
-        "bodyExcludes": [
-          "Generate a concise title",
-          "CRITICAL: Respond with TEXT ONLY"
-        ]
+        "bodyIncludes": ["toolu_v2_native_a_restored_gate"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
       },
       "response": {
         "statusCode": 200,
@@ -796,6 +702,244 @@
           "text": "E2E_V2_NATIVE_A_DONE_4",
           "inputTokens": 96,
           "outputTokens": 16
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-root-spawn",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_V2_NATIVE_REWIND_ROOT"],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_rewind_root"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_rewind_root",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "a",
+            "message": "E2E_V2_NATIVE_REWIND_A",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-root-done",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["toolu_v2_rewind_root"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "rewind-root-done",
+          "text": "E2E_V2_NATIVE_REWIND_ROOT_DONE",
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-a-spawn",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_V2_NATIVE_REWIND_A"],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_rewind_a"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_rewind_a",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "b",
+            "message": "E2E_V2_NATIVE_REWIND_B",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-a-done",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["toolu_v2_rewind_a"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "rewind-a-done",
+          "text": "E2E_V2_NATIVE_REWIND_A_DONE",
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-b-spawn",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_V2_NATIVE_REWIND_B"],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "toolu_v2_rewind_b"
+        ]
+      },
+      "response": {
+        "statusCode": 200,
+        "toolUse": {
+          "id": "toolu_v2_rewind_b",
+          "name": "collaboration_spawn_agent",
+          "input": {
+            "task_name": "c",
+            "message": "E2E_V2_NATIVE_REWIND_C",
+            "fork_turns": "none",
+            "agent_type": "general-purpose"
+          },
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-b-done",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["toolu_v2_rewind_b"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "rewind-b-done",
+          "text": "E2E_V2_NATIVE_REWIND_B_DONE",
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-c-done",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_V2_NATIVE_REWIND_C"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "rewind-c-done",
+          "text": "E2E_V2_NATIVE_REWIND_C_DONE",
+          "inputTokens": 64,
+          "outputTokens": 12
+        }
+      }
+    },
+    {
+      "id": "v2-native-rewind-edited",
+      "description": "Synthetic local replay for descendant tab branch invalidation",
+      "metadata": {
+        "kind": "main",
+        "timingPolicy": "fast-text",
+        "source": "synthetic",
+        "syntheticReason": "固定模型响应；真实 Electron/Host/CLI/V2 工具、Bash、SQLite 和原生 UI 执行。文件门闩只控制测试时序，不注入代理状态；不代表外部 LLM 或 Provider 已验收。"
+      },
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_V2_NATIVE_REPLACEMENT"],
+        "bodyExcludes": ["Generate a concise title", "CRITICAL: Respond with TEXT ONLY"]
+      },
+      "response": {
+        "statusCode": 200,
+        "text": {
+          "id": "rewind-edited",
+          "text": "E2E_V2_NATIVE_REPLACEMENT_DONE",
+          "inputTokens": 64,
+          "outputTokens": 12
         }
       }
     }

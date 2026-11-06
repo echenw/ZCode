@@ -1,6 +1,56 @@
 # Tool Change Chain Spec
 
+## 官方 v3.17.1 整仓吸收（2026-10-31）
+
+用户明确选择整仓升级到官方 `a60ba6a7e5a06742270ca605f5d2cc2766afa7e1`，保留现有 V2
+提交及未提交修复；不提交或推送。上游基线为 `3c5b227649371507ddc4eb46ac5133afe6db1cab`。
+采用三方逐文件合并，当前脏文件和未跟踪产物已在仓外备份。上游新增/删除按新版本执行；与
+V2 相交的生命周期、协议、提示词、投影、递归控制和测试逐项保留并适配，不机械覆盖本地。
+
+Owner 继续沿用官方 Runtime/Runner、Root Registry、SessionStore 和原 Workflow 服务。
+吸收官方消息校验、结构化终态、真实关闭等待、限流准入、远端配置同步和额度续跑；V2 保留
+queue_only/trigger_turn 分离、真实父级邮箱、generation fence、首轮恢复、全树冷物化和递归 UI。
+关闭 session 必须通过官方关闭链等待真实执行及资源释放，不能以取消回执代替关闭完成。
+普通 Main Stop 仍只停止主轮；显式 subtree/tree 与整个 session 关闭才处理对应后代。
+
+```mermaid
+sequenceDiagram
+  participant Main as 主轮
+  participant Owner as 原 Runtime/Runner
+  participant Tree as Root Registry
+  Main->>Owner: Main Stop
+  Owner-->>Main: 停止本轮，后代独立执行
+  Main->>Owner: Session close
+  Owner->>Tree: 禁止新准入并停止所属后代
+  Owner->>Owner: 等待执行、后台工作与资源清理
+  Owner-->>Main: 关闭完成
+```
+
+验证对照新版本正式入口；CLI 使用独立测试，App 按上游 E2E/工程门禁规则验证。
+旧 E45 通过不覆盖升级后的工作树；Docker 虚拟桌面回放及类型/Lint/架构需在集成树重跑。
+真实外部模型未由本轮默认授权，原有 B0 与跨 Provider 等受阻项继续保留。
+
 ## 复审确认的 V2 链路修复（2026-10-28）
+
+本轮追加回归边界：Stop 已提交终态、或新 runGeneration 已开始后，旧初始化不得再注册消息
+sink、删除身份或覆盖执行绑定。Registry 持久化单调的 hasStartedTurn：只有明确 false 才能用原 childSessionId 完成首次初始化；
+历史值为 true 或旧图未知时仍拒绝空历史，已有 Session 还须核对项目、父链、目录及未删除状态。
+初始化失败只释放仍属于本代次且尚未停止的预留；原前台 Agent
+和原生 spawn 沿同一规则处理。冷恢复需将当前有效分支的全部后代恢复成正式生命周期行，
+不能只给目录写一次全树 seed；后续普通事件仍从这些行派生同一完整目录。根会话的全树
+manifest 同步须回收已失效的后代标签；子会话局部同步不得误删兄弟、祖先、其他根或工作区的标签。
+
+```mermaid
+sequenceDiagram
+  participant Old as 旧初始化
+  participant Owner as Root Registry
+  participant New as 新执行
+  Old->>Owner: 预留本代次身份
+  Owner->>Owner: Stop 提交终态
+  New->>Owner: 原身份进入新代次
+  Old->>Owner: 迟到的注册或失败清理
+  Owner-->>Old: 拒绝旧代次写入
+```
 
 本轮沿用既定 Owner：Root RuntimeTaskRegistry 管代理身份、执行与邮箱，SessionStore 保存其图；
 Host 和 UI 只投影。冷读取从正式 `multi_agent/graph` 读取 canonical path、agentId、childSessionId、

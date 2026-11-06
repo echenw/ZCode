@@ -299,3 +299,7 @@ workspace 的持久化身份（含隐藏类型），单批最多 64 个，includ
 输入被拒且没有输入落库，普通主任务、fork 和 Agent 派发正常；SAT29 覆盖历史索引污染收敛、
 workspace identity 隔离、远端失败保留及原始转录保留。协议层两种 clientMode 都验证；Electron
 E2E 通过真实 Agent 派发、CLI 重启、点击详情，断言只读 child 正文可见且左侧没有 child。
+
+## 2026-10-28 复审修复边界
+
+根会话的完整后代 manifest 用于回收同一工作区、同一 Root 下失效的孙/曾孙标签；子会话局部同步只作用于它的直接子标签，不影响兄弟、祖先或其他工作区。工作区匹配继续使用 `workspaceIdentity?.trim() || workspacePath`。冷恢复以经过有效分支、项目与真实父链校验的全树生命周期建立正式行，再派生目录；seed 不保存第二份目录权威。
